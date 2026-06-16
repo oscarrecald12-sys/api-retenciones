@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retenciones SIFEN — DUTRIEC SA</title>
+  <link rel="stylesheet" href="css/estilos.css?v=3">
+</head>
+<body>
+
+  <!-- ====================================================
+       PANTALLA LOGIN
+  ==================================================== -->
+  <div id="pantalla-login">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-icon">&#128196;</div>
+        <div class="login-empresa">DUTRIEC SA</div>
+        <div class="login-sistema">Sistema de Retenciones SIFEN</div>
+        <div class="login-ruc">RUC 80015056-2</div>
+      </div>
+      <div class="login-campo">
+        <label>Usuario</label>
+        <input type="text" id="login-usuario" placeholder="usuario" autocomplete="username" />
+      </div>
+      <div class="login-campo">
+        <label>Contraseña</label>
+        <input type="password" id="login-clave" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <button class="btn-ingresar" onclick="doLogin()">Ingresar</button>
+      <div id="login-error" class="login-error"></div>
+    </div>
+  </div>
+
+  <!-- ====================================================
+       PANTALLA PRINCIPAL (oculta hasta login)
+  ==================================================== -->
+  <div id="pantalla-principal" style="display:none">
+
+    <!-- ENCABEZADO -->
+    <header class="header">
+      <div class="header-izq">
+        <h1 class="titulo">Retenciones SIFEN</h1>
+        <p class="subtitulo">Gestión y envío automático de comprobantes de retención · DUTRIEC SA</p>
+      </div>
+      <div class="header-der" style="display:flex;align-items:center;gap:12px">
+        <span class="header-usuario">&#128100; <span id="label-usuario"></span></span>
+        <button class="btn-logout" onclick="doLogout()">Salir</button>
+        <button class="btn-primario" id="btn-enviar">&#9654; Enviar al SIFEN</button>
+      </div>
+    </header>
+
+    <div class="contenedor">
+
+      <!-- PESTAÑAS PRINCIPALES -->
+      <div class="pestanas-main">
+        <button class="pestana-main activa" onclick="cambiarVista('facturas', this)">
+          &#128196; Facturas pendientes
+        </button>
+        <button class="pestana-main" onclick="cambiarVista('dashboard', this)">
+          &#128202; Control de envíos
+        </button>
+      </div>
+
+      <!-- ================================================
+           VISTA: FACTURAS PENDIENTES
+      ================================================ -->
+      <div id="vista-facturas">
+
+        <!-- TARJETAS -->
+        <div class="tarjetas">
+          <div class="tarjeta">
+            <p class="tarjeta-label">Total facturas</p>
+            <p class="tarjeta-valor" id="stat-total">0</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Sin autorización</p>
+            <p class="tarjeta-valor color-gris" id="stat-sinauth">0</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Pendientes</p>
+            <p class="tarjeta-valor color-amarillo" id="stat-pendiente">0</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Procesadas</p>
+            <p class="tarjeta-valor color-verde" id="stat-procesado">0</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Rechazadas</p>
+            <p class="tarjeta-valor color-rojo" id="stat-rechazado">0</p>
+          </div>
+        </div>
+
+        <!-- PESTAÑAS ESTADO -->
+        <div class="pestanas">
+          <button class="pestana activa" onclick="cambiarPestana('todas', this)">Todas</button>
+          <button class="pestana" onclick="cambiarPestana('PENDIENTE_AUTH', this)">Sin autorización</button>
+          <button class="pestana" onclick="cambiarPestana('PENDIENTE', this)">Pendientes</button>
+          <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Procesadas</button>
+          <button class="pestana" onclick="cambiarPestana('RECHAZADO', this)">Rechazadas</button>
+        </div>
+
+        <!-- FILTROS Y ACCIONES -->
+        <div class="barra-acciones">
+          <div class="filtros">
+            <input type="text" id="filtro-buscar" placeholder="Buscar proveedor o RUC..." oninput="renderTabla()">
+            <select id="filtro-mes" onchange="renderTabla()">
+              <option value="">Todos los meses</option>
+              <option value="01">Enero 2026</option>
+              <option value="02">Febrero 2026</option>
+              <option value="03">Marzo 2026</option>
+              <option value="04">Abril 2026</option>
+              <option value="05">Mayo 2026</option>
+              <option value="06">Junio 2026</option>
+              <option value="07">Julio 2026</option>
+              <option value="08">Agosto 2026</option>
+              <option value="09">Septiembre 2026</option>
+              <option value="10">Octubre 2026</option>
+              <option value="11">Noviembre 2026</option>
+              <option value="12">Diciembre 2026</option>
+            </select>
+          </div>
+          <div class="acciones-sel">
+            <span id="info-seleccion">0 facturas seleccionadas</span>
+            <button class="btn-secundario" onclick="seleccionarTodas()">Seleccionar pendientes</button>
+            <button class="btn-aprobar" id="btn-aprobar" onclick="aprobarYEnviar()">&#10003; Aprobar y enviar al SIFEN</button>
+            <button class="btn-secundario" onclick="limpiarSeleccion()">Limpiar selección</button>
+          </div>
+        </div>
+
+        <!-- MENSAJE -->
+        <div id="mensaje" class="mensaje oculto"></div>
+
+        <!-- TABLA -->
+        <div class="tabla-contenedor">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th style="width:36px"></th>
+                <th>Nº Factura</th>
+                <th>Proveedor / RUC</th>
+                <th>Orden Pago</th>
+                <th>Moneda</th>
+                <th class="der">Monto</th>
+                <th class="der">Retención 30%</th>
+                <th>Fecha Emisión</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="cuerpo-tabla"></tbody>
+          </table>
+        </div>
+
+      </div><!-- /vista-facturas -->
+
+      <!-- ================================================
+           VISTA: CONTROL DE ENVÍOS (MariaDB)
+      ================================================ -->
+      <div id="vista-dashboard" style="display:none">
+
+        <!-- TARJETAS DASHBOARD -->
+        <div class="tarjetas">
+          <div class="tarjeta">
+            <p class="tarjeta-label">Total enviadas</p>
+            <p class="tarjeta-valor color-verde" id="dash-enviadas">—</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Pendientes de envío</p>
+            <p class="tarjeta-valor color-amarillo" id="dash-pendientes">—</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Con error</p>
+            <p class="tarjeta-valor color-rojo" id="dash-errores">—</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Físicas (manual)</p>
+            <p class="tarjeta-valor color-gris" id="dash-fisicas">—</p>
+          </div>
+          <div class="tarjeta">
+            <p class="tarjeta-label">Monto retenido 2026</p>
+            <p class="tarjeta-valor" id="dash-monto" style="font-size:16px">—</p>
+          </div>
+        </div>
+
+        <!-- FILTROS DASHBOARD -->
+        <div class="barra-acciones">
+          <div class="filtros">
+            <input type="text" id="dash-filtro-ruc" placeholder="Buscar RUC o Nº doc..." oninput="filtrarDashboard()">
+            <select id="dash-filtro-estado" onchange="filtrarDashboard()">
+              <option value="">Todos los estados</option>
+              <option value="ENVIADO">Enviado</option>
+              <option value="PENDIENTE">Pendiente</option>
+              <option value="ERROR">Error</option>
+              <option value="FISICA_MANUAL">Física manual</option>
+              <option value="SIMULADO">Simulado</option>
+            </select>
+            <button class="btn-secundario" onclick="cargarDashboard()">&#8635; Actualizar</button>
+          </div>
+        </div>
+
+        <!-- TABLA RETENCIONES ENVIADAS -->
+        <div class="tabla-contenedor">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Nº Doc Ret</th>
+                <th>RUC Proveedor</th>
+                <th>Razón Social</th>
+                <th>Nº Factura</th>
+                <th class="der">Base Imponible</th>
+                <th class="der">Retención</th>
+                <th>Tipo</th>
+                <th>Estado SIFEN</th>
+                <th>Fecha envío</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="cuerpo-dashboard"></tbody>
+          </table>
+        </div>
+
+        <!-- LOG DE ENVÍOS -->
+        <div class="log-seccion">
+          <div class="log-titulo">&#128196; Log de envíos recientes</div>
+          <div id="log-contenedor"></div>
+        </div>
+
+      </div><!-- /vista-dashboard -->
+
+    </div><!-- /contenedor -->
+
+  </div><!-- /pantalla-principal -->
+
+  <!-- MODAL RECHAZO SIFEN -->
+  <div id="overlay-rechazo" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
+    <div style="background:white;border-radius:8px;padding:24px;max-width:500px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <span style="width:32px;height:32px;border-radius:50%;background:#fce8e8;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#10007;</span>
+        <h3 style="font-size:15px;font-weight:bold;color:#a32d2d">Detalle del rechazo SIFEN</h3>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Nº doc ret</p><p id="rec-numdoc" style="font-size:13px;font-family:monospace;color:#333"></p></div>
+        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Proveedor</p><p id="rec-proveedor" style="font-size:13px;font-weight:bold;color:#333"></p></div>
+        <div><p style="font-size:11px;color:#888;margin-bottom:3px">RUC</p><p id="rec-ruc" style="font-size:13px;color:#333"></p></div>
+        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Nº Factura</p><p id="rec-factura" style="font-size:13px;font-family:monospace;color:#333"></p></div>
+        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Código respuesta</p><p id="rec-codres" style="font-size:14px;font-weight:bold;color:#a32d2d"></p></div>
+        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Estado SIFEN</p><p id="rec-estres" style="font-size:13px;color:#a32d2d"></p></div>
+        <div style="grid-column:1/-1"><p style="font-size:11px;color:#888;margin-bottom:3px">Fecha de envio</p><p id="rec-fecha" style="font-size:13px;color:#333"></p></div>
+      </div>
+      <div style="background:#fce8e8;border:1px solid #f0a0a0;border-radius:4px;padding:12px;margin-bottom:16px">
+        <p style="font-size:11px;color:#888;margin-bottom:4px">Motivo del rechazo</p>
+        <p id="rec-msgres" style="font-size:13px;color:#a32d2d;font-weight:500"></p>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="cerrarRechazo()" style="padding:8px 16px;background:white;color:#333;border:1px solid #ccc;border-radius:4px;font-size:13px;cursor:pointer">Cerrar</button>
+        <button onclick="reenviarDesdeModal()" style="padding:8px 16px;background:#1a4a8a;color:white;border:none;border-radius:4px;font-size:13px;font-weight:bold;cursor:pointer">Reenviar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DETALLE -->
+  <div id="overlay-detalle" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
+    <div style="background:white;border-radius:8px;padding:24px;max-width:480px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+      <h3 style="font-size:15px;font-weight:bold;margin-bottom:16px;color:#333">Detalle del rechazo</h3>
+      <p style="font-size:12px;color:#888;margin-bottom:4px">Nº Factura</p>
+      <p id="detalle-nro" style="font-size:13px;font-family:monospace;margin-bottom:12px;color:#333"></p>
+      <p style="font-size:12px;color:#888;margin-bottom:4px">Proveedor</p>
+      <p id="detalle-proveedor" style="font-size:13px;font-weight:bold;margin-bottom:12px;color:#333"></p>
+      <p style="font-size:12px;color:#888;margin-bottom:4px">Motivo del rechazo</p>
+      <div id="detalle-motivo" style="font-size:13px;color:#a32d2d;background:#fce8e8;border:1px solid #f0a0a0;border-radius:4px;padding:10px;line-height:1.6"></div>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="cerrarDetalle()" style="padding:8px 18px;background:#1a4a8a;color:white;border:none;border-radius:4px;font-size:13px;cursor:pointer">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/retenciones.js?v=3"></script>
+</body>
+</html>

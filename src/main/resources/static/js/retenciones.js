@@ -1,0 +1,534 @@
+// =============================================
+// CONFIGURACION
+// =============================================
+var URL_API = "http://localhost:8080";
+var MONTO_MINIMO = 1218000;
+var seleccionados = [];
+var pestanaActual = "todas";
+var facturas = [];
+var retencionesDB = [];
+var vistaActual = "facturas";
+
+// =============================================
+// USUARIOS
+// =============================================
+var USUARIOS = {
+  "admin":    "dutriec2026",
+  "vgimenez": "sifen2026",
+  "operador": "ret2026"
+};
+
+// =============================================
+// LOGIN
+// =============================================
+function doLogin() {
+  var usuario = document.getElementById("login-usuario").value.trim().toLowerCase();
+  var clave   = document.getElementById("login-clave").value;
+  if (!usuario || !clave) { mostrarErrorLogin("Ingresa usuario y contrasena."); return; }
+  if (!USUARIOS[usuario] || USUARIOS[usuario] !== clave) {
+    mostrarErrorLogin("Usuario o contrasena incorrectos.");
+    document.getElementById("login-clave").value = "";
+    document.getElementById("login-clave").focus();
+    return;
+  }
+  document.getElementById("login-error").style.display = "none";
+  sessionStorage.setItem("usr_retencion", usuario);
+  ingresarAlSistema(usuario);
+}
+
+function mostrarErrorLogin(texto) {
+  var errEl = document.getElementById("login-error");
+  errEl.textContent = texto;
+  errEl.style.display = "block";
+  var card = document.querySelector(".login-card");
+  card.style.border = "1px solid #a32d2d";
+  setTimeout(function() { card.style.border = ""; }, 1500);
+}
+
+function ingresarAlSistema(usuario) {
+  document.getElementById("pantalla-login").style.display = "none";
+  document.getElementById("pantalla-principal").style.display = "block";
+  document.getElementById("label-usuario").textContent = usuario;
+  cargarFacturas();
+}
+
+function doLogout() {
+  sessionStorage.removeItem("usr_retencion");
+  document.getElementById("pantalla-principal").style.display = "none";
+  document.getElementById("pantalla-login").style.display = "flex";
+  document.getElementById("login-usuario").value = "";
+  document.getElementById("login-clave").value = "";
+  document.getElementById("login-error").style.display = "none";
+  document.querySelector(".login-card").style.border = "";
+  facturas = [];
+  retencionesDB = [];
+}
+
+// =============================================
+// INICIALIZACION
+// =============================================
+document.addEventListener("DOMContentLoaded", function() {
+  document.getElementById("login-clave").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") doLogin();
+  });
+  document.getElementById("login-usuario").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") document.getElementById("login-clave").focus();
+  });
+  document.getElementById("btn-enviar").addEventListener("click", enviarAlSifen);
+  var usr = sessionStorage.getItem("usr_retencion");
+  if (usr && USUARIOS[usr]) { ingresarAlSistema(usr); }
+});
+
+// =============================================
+// CAMBIO DE VISTA
+// =============================================
+function cambiarVista(vista, elemento) {
+  vistaActual = vista;
+  var botones = document.querySelectorAll(".pestana-main");
+  for (var i = 0; i < botones.length; i++) botones[i].classList.remove("activa");
+  elemento.classList.add("activa");
+  document.getElementById("vista-facturas").style.display  = (vista === "facturas")  ? "block" : "none";
+  document.getElementById("vista-dashboard").style.display = (vista === "dashboard") ? "block" : "none";
+  if (vista === "dashboard") cargarDashboard();
+}
+
+// =============================================
+// CARGA FACTURAS DESDE SQL ANYWHERE
+// =============================================
+function cargarFacturas() {
+  document.getElementById("cuerpo-tabla").innerHTML =
+    "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#aaa'>Cargando facturas...</td></tr>";
+  fetch(URL_API + "/retenciones/pendientes")
+    .then(function(r) { if (!r.ok) throw new Error("Error al conectar con la API"); return r.json(); })
+    .then(function(datos) {
+      var totalesPorCompra = {};
+      datos.forEach(function(f) {
+        if (f.compra) {
+          var monto = (f.montoGravado || 0) + (f.montoGravado5 || 0) + (f.montoExento || 0);
+          var tc = f.factorCambio || 1;
+          var montoGS = (f.moneda === "DL" || f.moneda === "USD") ? monto * tc : monto;
+          totalesPorCompra[f.compra] = (totalesPorCompra[f.compra] || 0) + montoGS;
+        }
+      });
+      facturas = datos.map(function(f) {
+        var esUSD = (f.moneda === "DL" || f.moneda === "USD");
+        var tc = f.factorCambio || 1;
+        var retUSD = 0, retGS = 0;
+        if (esUSD) {
+          retUSD = Math.round(((f.montoImpuesto || 0) * 0.30 + (f.montoImpuesto5 || 0) * 0.30) * 100) / 100;
+          retGS  = Math.round(retUSD * tc);
+        } else {
+          retGS = Math.round((f.montoImpuesto || 0) * 0.30 + (f.montoImpuesto5 || 0) * 0.30);
+        }
+        var totalCompra = f.compra ? (totalesPorCompra[f.compra] || 0) : 0;
+        var aplicaRetencion = totalCompra >= MONTO_MINIMO;
+        return {
+          id: f.factura, nro: f.facturaFisica || "—",
+          proveedor: f.razonSocial || "Sin nombre", ruc: f.ruc || "",
+          compra: f.compra || null, moneda: f.moneda || "GS", tipoCambio: tc,
+          monto: (f.montoGravado || 0) + (f.montoGravado5 || 0) + (f.montoExento || 0),
+          tasa: calcularTasa(f), retGS: retGS, retUSD: retUSD, esUSD: esUSD,
+          timbrado: f.timbrado || "", fecha: f.fecha || "",
+          totalCompra: totalCompra, aplicaRetencion: aplicaRetencion,
+          estado: "PENDIENTE", motivo: ""
+        };
+      });
+      renderTabla();
+    })
+    .catch(function(error) {
+      mostrarMensaje("Error al cargar facturas: " + error.message, "error");
+      document.getElementById("cuerpo-tabla").innerHTML =
+        "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo conectar con la API.</td></tr>";
+    });
+}
+
+// =============================================
+// CARGA DASHBOARD DESDE MARIADB
+// =============================================
+function cargarDashboard() {
+  document.getElementById("cuerpo-dashboard").innerHTML =
+    "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#aaa'>Cargando datos...</td></tr>";
+  fetch(URL_API + "/retenciones/dashboard")
+    .then(function(r) { if (!r.ok) throw new Error("Error al cargar dashboard"); return r.json(); })
+    .then(function(data) {
+      document.getElementById("dash-enviadas").textContent   = data.resumen.enviadas   || 0;
+      document.getElementById("dash-pendientes").textContent = data.resumen.pendientes || 0;
+      document.getElementById("dash-errores").textContent    = data.resumen.errores    || 0;
+      document.getElementById("dash-fisicas").textContent    = data.resumen.fisicas    || 0;
+      document.getElementById("dash-monto").textContent      = "Gs. " + formatearNumero(data.resumen.montoTotal || 0);
+      retencionesDB = data.retenciones || [];
+      renderDashboard();
+      renderLog(data.logs || []);
+    })
+    .catch(function(error) {
+      document.getElementById("cuerpo-dashboard").innerHTML =
+        "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo cargar el dashboard: " + error.message + "</td></tr>";
+    });
+}
+
+function filtrarDashboard() { renderDashboard(); }
+
+function renderDashboard() {
+  var buscar = document.getElementById("dash-filtro-ruc").value.toLowerCase();
+  var estado = document.getElementById("dash-filtro-estado").value;
+  var tbody  = document.getElementById("cuerpo-dashboard");
+  var filtrados = retencionesDB.filter(function(r) {
+    var matchEstado = !estado || r.estadoSifen === estado;
+    var matchBuscar = !buscar ||
+      (r.rucProveedor && r.rucProveedor.toLowerCase().indexOf(buscar) !== -1) ||
+      (r.numDocRet    && r.numDocRet.toLowerCase().indexOf(buscar)    !== -1) ||
+      (r.razonSocial  && r.razonSocial.toLowerCase().indexOf(buscar)  !== -1);
+    return matchEstado && matchBuscar;
+  });
+  if (!filtrados.length) {
+    tbody.innerHTML = "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#aaa'>Sin resultados</td></tr>";
+    return;
+  }
+  var html = "";
+  filtrados.forEach(function(r) {
+    var esFE = r.cdcProveedor && r.cdcProveedor.trim() !== "";
+    var tipoHtml = esFE
+      ? "<span class='badge badge-procesado'>Electronica</span>"
+      : "<span class='badge badge-sinauth'>Fisica</span>";
+    var accion = "";
+    if (r.estadoSifen === "ERROR") {
+      accion = "<button class='btn-rechazo' onclick='verRechazo(\"" + r.numDocRet + "\")'>Ver rechazo</button>" +
+               "<button class='btn-reenviar' onclick='reenviarRetencion(\"" + r.id + "\")' style='margin-left:4px'>Reenviar</button>";
+    } else if (r.estadoSifen === "ENVIADO" && r.respuestaSifen) {
+      accion = "<button class='btn-reenviar' onclick='verRespuesta(\"" + r.numDocRet + "\")' style='color:#0c447c;border-color:#b5d4f4'>Ver XML</button>";
+    }
+    html += "<tr>" +
+      "<td style='font-family:monospace;font-size:11px'>" + (r.numDocRet || "—") + "</td>" +
+      "<td style='font-size:11px'>" + (r.rucProveedor || "—") + "</td>" +
+      "<td><strong style='font-size:12px'>" + (r.razonSocial || "—") + "</strong></td>" +
+      "<td style='font-family:monospace;font-size:11px'>" + (r.nroFactura || "—") + "</td>" +
+      "<td class='der'>Gs. " + formatearNumero(r.baseImponible) + "</td>" +
+      "<td class='der'><strong>Gs. " + formatearNumero(r.montoRetencion) + "</strong></td>" +
+      "<td>" + tipoHtml + "</td>" +
+      "<td>" + badgeDashboard(r.estadoSifen) + "</td>" +
+      "<td style='font-size:11px'>" + formatearFecha(r.fechaEnvio) + "</td>" +
+      "<td>" + accion + "</td>" +
+      "</tr>";
+  });
+  tbody.innerHTML = html;
+}
+
+function badgeDashboard(estado) {
+  var map    = { "ENVIADO":"badge-procesado", "PENDIENTE":"badge-pendiente", "ERROR":"badge-rechazado", "FISICA_MANUAL":"badge-sinauth", "SIMULADO":"badge-anulado", "APROBADO":"badge-procesado" };
+  var labels = { "ENVIADO":"Enviado", "PENDIENTE":"Pendiente", "ERROR":"Error", "FISICA_MANUAL":"Fisica manual", "SIMULADO":"Simulado", "APROBADO":"Aprobado" };
+  return "<span class='badge " + (map[estado] || "") + "'>" + (labels[estado] || estado) + "</span>";
+}
+
+function renderLog(logs) {
+  var cont = document.getElementById("log-contenedor");
+  if (!logs.length) {
+    cont.innerHTML = "<div style='padding:16px;color:#aaa;font-size:12px;text-align:center'>Sin registros</div>";
+    return;
+  }
+  var html = "<table style='width:100%;border-collapse:collapse;font-size:12px'>" +
+    "<thead><tr style='background:#f9f9f9;border-bottom:1px solid #ddd'>" +
+    "<th style='padding:8px 10px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em;width:32px'></th>" +
+    "<th style='padding:8px 10px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em'>Comprobante</th>" +
+    "<th style='padding:8px 10px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em'>Proveedor</th>" +
+    "<th style='padding:8px 10px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em'>Detalle</th>" +
+    "<th style='padding:8px 10px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em'>Estado</th>" +
+    "<th style='padding:8px 10px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em'>Fecha</th>" +
+    "</tr></thead><tbody>";
+
+  logs.forEach(function(l) {
+    var exitoso = l.exitoso == 1 || l.exitoso === true;
+    var color = exitoso ? "#2d7a0e" : "#a32d2d";
+    var icono = exitoso ? "✓" : "✗";
+    var bgIcono = exitoso ? "#e8f5e0" : "#fce8e8";
+
+    // Extraer comprobante y proveedor del campo accion "Retencion XXX — PROVEEDOR"
+    var accion = l.accion || "";
+    var partes = accion.replace("Retencion ", "").split(" — ");
+    var comprobante = partes[0] || "—";
+    var proveedor   = partes[1] || "—";
+
+    // Badge de estado según detalle
+    var detalle = l.detalle || "";
+    var estadoBadge = "";
+    if (detalle.indexOf("Aprobado") !== -1)       estadoBadge = "<span class='badge badge-procesado'>Aprobado</span>";
+    else if (detalle.indexOf("Enviado") !== -1)    estadoBadge = "<span class='badge badge-procesado'>Enviado</span>";
+    else if (detalle.indexOf("Error") !== -1 || detalle.indexOf("dCodRes") !== -1) estadoBadge = "<span class='badge badge-rechazado'>Error</span>";
+    else if (detalle.indexOf("fisica") !== -1 || detalle.indexOf("Fisica") !== -1) estadoBadge = "<span class='badge badge-sinauth'>Fisica</span>";
+    else if (detalle.indexOf("Pendiente") !== -1)  estadoBadge = "<span class='badge badge-pendiente'>Pendiente</span>";
+    else estadoBadge = "<span class='badge badge-anulado'>" + detalle.substring(0, 12) + "</span>";
+
+    var fecha = formatearFecha(l.fecha);
+
+    html += "<tr style='border-bottom:1px solid #eee'>" +
+      "<td style='padding:8px 10px'><span style='display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:" + bgIcono + ";color:" + color + ";font-size:12px;font-weight:bold'>" + icono + "</span></td>" +
+      "<td style='padding:8px 10px;font-family:monospace;font-size:11px;color:#333'>" + comprobante + "</td>" +
+      "<td style='padding:8px 10px;font-size:12px;font-weight:bold;color:#333'>" + proveedor + "</td>" +
+      "<td style='padding:8px 10px;font-size:11px;color:#666;max-width:300px'>" + detalle + "</td>" +
+      "<td style='padding:8px 10px'>" + estadoBadge + "</td>" +
+      "<td style='padding:8px 10px;font-size:11px;color:#888;white-space:nowrap'>" + fecha + "</td>" +
+      "</tr>";
+  });
+
+  html += "</tbody></table>";
+  cont.innerHTML = html;
+}
+
+function reenviarRetencion(id) {
+  if (!confirm("Reenviar esta retencion?")) return;
+  fetch(URL_API + "/retenciones/reenviar/" + id, { method: "POST" })
+    .then(function(r) { return r.json(); })
+    .then(function() { mostrarMensaje("Retencion reenviada", "ok"); cargarDashboard(); })
+    .catch(function() { mostrarMensaje("Error al reenviar", "error"); });
+}
+
+// =============================================
+// VER RECHAZO — modal
+// =============================================
+function verRechazo(numDocRet) {
+  var r = retencionesDB.find(function(x) { return x.numDocRet === numDocRet; });
+  if (!r) return;
+  var motivo = r.respuestaSifen || "Sin descripcion";
+  var codRes = "—";
+  var mCod = motivo.match(/dCodRes[:\s]+(\d+)/);
+  if (mCod) codRes = mCod[1];
+  document.getElementById("rec-numdoc").textContent    = numDocRet;
+  document.getElementById("rec-proveedor").textContent = r.razonSocial || "—";
+  document.getElementById("rec-ruc").textContent       = r.rucProveedor || "—";
+  document.getElementById("rec-factura").textContent   = r.nroFactura || "—";
+  document.getElementById("rec-codres").textContent    = codRes;
+  document.getElementById("rec-estres").textContent    = "Rechazado";
+  document.getElementById("rec-msgres").textContent    = motivo;
+  document.getElementById("rec-fecha").textContent     = r.fechaEnvio ? String(r.fechaEnvio).substring(0, 16).replace("T", " ") : "—";
+  document.getElementById("overlay-rechazo").dataset.id = r.id;
+  document.getElementById("overlay-rechazo").style.display = "flex";
+}
+
+function cerrarRechazo() {
+  document.getElementById("overlay-rechazo").style.display = "none";
+}
+
+function reenviarDesdeModal() {
+  var id = document.getElementById("overlay-rechazo").dataset.id;
+  cerrarRechazo();
+  reenviarRetencion(id);
+}
+
+function verRespuesta(numDocRet) {
+  var r = retencionesDB.find(function(x) { return x.numDocRet === numDocRet; });
+  if (!r || !r.respuestaSifen) return;
+  document.getElementById("detalle-nro").textContent       = numDocRet;
+  document.getElementById("detalle-proveedor").textContent = r.razonSocial || r.rucProveedor;
+  document.getElementById("detalle-motivo").innerHTML =
+    "<pre style='font-size:11px;white-space:pre-wrap;color:#0c447c'>" +
+    String(r.respuestaSifen).replace(/</g, "&lt;") + "</pre>";
+  document.getElementById("overlay-detalle").style.display = "flex";
+}
+
+// =============================================
+// CALCULOS
+// =============================================
+function calcularTasa(f) {
+  if (f.montoGravado > 0) return "10";
+  if (f.montoGravado5 > 0) return "5";
+  return "exenta";
+}
+
+function formatearFecha(fecha) {
+  if (!fecha) return "—";
+  var s = String(fecha);
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ]?(\d{2}:\d{2})?/);
+  if (!m) return s;
+  var fechaStr = m[3] + "/" + m[2] + "/" + m[1];
+  return m[4] ? (fechaStr + " " + m[4]) : fechaStr;
+}
+
+function formatearNumero(n) { return Math.round(n || 0).toLocaleString("es-PY"); }
+function formatearUSD(n) { return (n || 0).toLocaleString("es-PY", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// =============================================
+// APROBAR Y ENVIAR
+// =============================================
+function aprobarYEnviar() {
+  if (seleccionados.length === 0) { mostrarMensaje("Selecciona al menos una factura.", "error"); return; }
+  var sinMinimo = seleccionados.filter(function(id) {
+    var f = facturas.find(function(x) { return x.id === id; });
+    return f && !f.aplicaRetencion;
+  });
+  if (sinMinimo.length > 0) { mostrarMensaje(sinMinimo.length + " factura/s no alcanzan el minimo", "error"); return; }
+  var cant = seleccionados.length;
+  var btn = document.getElementById("btn-aprobar");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  setTimeout(function() {
+    seleccionados.forEach(function(id) {
+      var f = facturas.find(function(x) { return x.id === id; });
+      if (f) f.estado = "PROCESADO";
+    });
+    seleccionados = [];
+    mostrarMensaje(cant + " retencion/es enviadas al SIFEN", "ok");
+    btn.disabled = false; btn.textContent = "Aprobar y enviar al SIFEN";
+    renderTabla();
+  }, 1500);
+}
+
+function enviarAlSifen() {
+  if (seleccionados.length === 0) { mostrarMensaje("Selecciona al menos una factura.", "error"); return; }
+  var cant = seleccionados.length;
+  var btn = document.getElementById("btn-enviar");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  setTimeout(function() {
+    seleccionados.forEach(function(id) {
+      var f = facturas.find(function(x) { return x.id === id; });
+      if (f) f.estado = "PROCESADO";
+    });
+    seleccionados = [];
+    mostrarMensaje(cant + " retencion/es enviadas al SIFEN", "ok");
+    btn.disabled = false; btn.textContent = "Enviar al SIFEN";
+    renderTabla();
+  }, 1500);
+}
+
+function reenviar(id) {
+  var f = facturas.find(function(x) { return x.id === id; });
+  if (f) { f.estado = "PROCESADO"; f.motivo = ""; }
+  mostrarMensaje("Retencion reenviada", "ok");
+  renderTabla();
+}
+
+// =============================================
+// DETALLE MODAL FACTURAS
+// =============================================
+function verDetalle(id) {
+  var f = facturas.find(function(x) { return x.id === id; });
+  if (!f) return;
+  document.getElementById("detalle-nro").textContent       = f.nro;
+  document.getElementById("detalle-proveedor").textContent = f.proveedor;
+  document.getElementById("detalle-motivo").textContent    = f.motivo || "Sin descripcion";
+  document.getElementById("overlay-detalle").style.display = "flex";
+}
+
+function cerrarDetalle() {
+  document.getElementById("overlay-detalle").style.display = "none";
+}
+
+// =============================================
+// RENDER TABLA FACTURAS
+// =============================================
+function obtenerMesFactura(fecha) {
+  if (!fecha) return "";
+  var s = String(fecha);
+  var m = s.match(/^\d{4}-(\d{2})-\d{2}/);
+  if (m) return m[1];
+  m = s.match(/^\d{1,2}\/(\d{1,2})\/\d{4}/);
+  if (m) return ("0" + m[1]).slice(-2);
+  return "";
+}
+
+function renderTabla() {
+  var buscar = document.getElementById("filtro-buscar").value.toLowerCase();
+  var mesFiltro = document.getElementById("filtro-mes").value;
+  var tbody = document.getElementById("cuerpo-tabla");
+  var html = "", encontrados = 0;
+  for (var i = 0; i < facturas.length; i++) {
+    var f = facturas[i];
+    if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
+    if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
+    if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
+    encontrados++;
+    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH");
+    var checked  = seleccionados.indexOf(f.id) !== -1 ? "checked" : "";
+    var disabled = !puedeSel ? "disabled" : "";
+    var montoHtml = f.esUSD
+      ? "USD " + formatearUSD(f.monto) + "<div style='font-size:10px;color:#888'>TC: " + formatearNumero(f.tipoCambio) + "</div>"
+      : "Gs. " + formatearNumero(f.monto);
+    var retHtml = f.esUSD
+      ? "USD " + formatearUSD(f.retUSD) + "<div style='font-size:10px;color:#888'>Gs. " + formatearNumero(f.retGS) + "</div>"
+      : "Gs. " + formatearNumero(f.retGS);
+    var minimoHtml = "";
+    if (f.compra) {
+      var color = f.aplicaRetencion ? "#2d7a0e" : "#a32d2d";
+      var titulo = f.aplicaRetencion
+        ? "Total Orden de Pago: Gs. " + formatearNumero(f.totalCompra) + " Supera el minimo"
+        : "Total Orden de Pago: Gs. " + formatearNumero(f.totalCompra) + " No alcanza el minimo";
+      minimoHtml = "<span style='display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:" + color + ";color:white;font-size:10px;font-weight:bold;cursor:help;flex-shrink:0' title='" + titulo + "'>i</span>";
+    }
+    var btnAccion = "";
+    if (f.estado === "RECHAZADO") {
+      btnAccion = "<button class='btn-reenviar' onclick='reenviar(" + f.id + ")' style='margin-bottom:4px;display:block'>Reenviar</button>" +
+        "<button class='btn-reenviar' onclick='verDetalle(" + f.id + ")' style='color:#633806;border-color:#FAC775'>Ver detalle</button>";
+    }
+    var fechaEmision = new Date().toLocaleDateString("es-PY");
+    html += "<tr>" +
+      "<td><input type='checkbox' " + checked + " " + disabled + " onchange='toggleSeleccion(" + f.id + ", this)'></td>" +
+      "<td style='font-family:monospace;font-size:11px'>" + f.nro + "</td>" +
+      "<td><strong>" + f.proveedor + "</strong><div style='font-size:10px;color:#888'>" + f.ruc + "</div></td>" +
+      "<td style='font-family:monospace;font-size:11px'>" + (f.compra || "—") + "</td>" +
+      "<td>" + f.moneda + "</td>" +
+      "<td class='der'>" + montoHtml + "</td>" +
+      "<td class='der'><div style='display:flex;align-items:center;justify-content:flex-end;gap:4px'><strong>" + retHtml + "</strong>" + minimoHtml + "</div></td>" +
+      "<td style='font-size:11px'>" + fechaEmision + "</td>" +
+      "<td>" + generarBadge(f.estado) + "</td>" +
+      "<td>" + btnAccion + "</td>" +
+      "</tr>";
+  }
+  if (encontrados === 0) html = "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#aaa'>No hay facturas en este estado</td></tr>";
+  tbody.innerHTML = html;
+  actualizarStats();
+  actualizarInfoSeleccion();
+}
+
+function generarBadge(estado) {
+  if (estado === "PENDIENTE_AUTH") return "<span class='badge badge-sinauth'>Sin autorizacion</span>";
+  if (estado === "PENDIENTE")      return "<span class='badge badge-pendiente'>Pendiente</span>";
+  if (estado === "PROCESADO")      return "<span class='badge badge-procesado'>Procesado</span>";
+  if (estado === "RECHAZADO")      return "<span class='badge badge-rechazado'>Rechazado</span>";
+  if (estado === "ANULADO")        return "<span class='badge badge-anulado'>Anulado</span>";
+  return estado;
+}
+
+function actualizarStats() {
+  var sinauth = 0, pendiente = 0, procesado = 0, rechazado = 0;
+  for (var i = 0; i < facturas.length; i++) {
+    if (facturas[i].estado === "PENDIENTE_AUTH") sinauth++;
+    if (facturas[i].estado === "PENDIENTE")      pendiente++;
+    if (facturas[i].estado === "PROCESADO")      procesado++;
+    if (facturas[i].estado === "RECHAZADO")      rechazado++;
+  }
+  document.getElementById("stat-total").textContent     = facturas.length;
+  document.getElementById("stat-sinauth").textContent   = sinauth;
+  document.getElementById("stat-pendiente").textContent = pendiente;
+  document.getElementById("stat-procesado").textContent = procesado;
+  document.getElementById("stat-rechazado").textContent = rechazado;
+}
+
+function toggleSeleccion(id, checkbox) {
+  if (checkbox.checked) { seleccionados.push(id); }
+  else { seleccionados = seleccionados.filter(function(x) { return x !== id; }); }
+  actualizarInfoSeleccion();
+}
+function seleccionarTodas() {
+  seleccionados = [];
+  for (var i = 0; i < facturas.length; i++) {
+    if (facturas[i].estado === "PENDIENTE" && facturas[i].aplicaRetencion) seleccionados.push(facturas[i].id);
+  }
+  renderTabla();
+}
+function limpiarSeleccion() { seleccionados = []; renderTabla(); }
+function actualizarInfoSeleccion() {
+  var n = seleccionados.length;
+  document.getElementById("info-seleccion").textContent =
+    n + " factura" + (n !== 1 ? "s" : "") + " seleccionada" + (n !== 1 ? "s" : "");
+}
+function cambiarPestana(nombre, elemento) {
+  pestanaActual = nombre; seleccionados = [];
+  var pestanas = document.querySelectorAll(".pestana");
+  for (var i = 0; i < pestanas.length; i++) pestanas[i].classList.remove("activa");
+  elemento.classList.add("activa");
+  renderTabla();
+}
+function mostrarMensaje(texto, tipo) {
+  var el = document.getElementById("mensaje");
+  el.textContent = texto;
+  el.className = "mensaje " + tipo;
+  setTimeout(function() { el.className = "mensaje oculto"; }, 4000);
+}
+setInterval(function() { if (vistaActual === "facturas") cargarFacturas(); }, 60000);
