@@ -52,7 +52,7 @@ Ejecutar el script en MariaDB:
 mysql -u root retenciones_sifen < retenciones_sifen.sql
 ```
 
-O abrir el archivo `retenciones_sifen.sql` en HeidiSQL y ejecutarlo.
+O abrir el archivo `retenciones_sifen.sql` en un gestor de base de datos (ej. Heidisql o Dbeaver) y ejecutarlo.
 
 ### 4. Configurar credenciales
 
