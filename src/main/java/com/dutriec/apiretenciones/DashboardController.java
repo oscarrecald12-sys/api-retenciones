@@ -78,6 +78,7 @@ public class DashboardController {
                 "  ruc_proveedor     AS rucProveedor, " +
                 "  razon_social      AS razonSocial, " +
                 "  nro_comprobante   AS nroFactura, " +
+                "  num_timbrado      AS numTimbrado, " +
                 "  retencion         AS montoRetencion, " +
                 "  monto             AS baseImponible, " +
                 "  moneda, " +
