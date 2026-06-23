@@ -452,3 +452,74 @@ body {
     cursor: pointer;
 }
 .btn-rechazo:hover { background: #fce8e8; }
+
+/* Botón azul */
+.btn-azul {
+    padding: 6px 14px;
+    background: #1a4a8a;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn-azul:hover { background: #0c3060; }
+
+/* Spinner de carga */
+.spinner-carga {
+    width: 32px;
+    height: 32px;
+    margin: 0 auto;
+    border: 3px solid #e0e4ea;
+    border-top-color: #1a4a8a;
+    border-radius: 50%;
+    animation: girar-spinner 0.8s linear infinite;
+}
+@keyframes girar-spinner {
+    to { transform: rotate(360deg); }
+}
+
+/* Botón opciones (Guardar respuesta / Ver detalles) */
+.btn-opcion {
+    padding: 4px 10px;
+    background: none;
+    color: #1a4a8a;
+    border: 1px solid #7ab0e0;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+}
+.btn-opcion:hover { background: #e8f0fb; }
+
+/* Dropdown Acciones */
+.dropdown-acciones {
+    position: relative;
+    display: inline-block;
+}
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    z-index: 100;
+    min-width: 160px;
+    margin-top: 4px;
+}
+.dropdown-menu button {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    text-align: left;
+    background: none;
+    border: none;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+}
+.dropdown-menu button:hover { background: #f0f4f8; }

@@ -94,7 +94,9 @@ public class TesakaController {
             "JOIN personas p ON fr.proveedor = p.persona " +
             "WHERE fr.factura = ?", idFactura
         );
-
+        System.out.println("facturas");
+        System.out.println(facturas);
+        
         if (facturas.isEmpty()) return null;
         Map<String, Object> f = facturas.get(0);
 

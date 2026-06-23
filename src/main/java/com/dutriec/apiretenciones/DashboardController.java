@@ -79,6 +79,9 @@ public class DashboardController {
                 "  razon_social      AS razonSocial, " +
                 "  nro_comprobante   AS nroFactura, " +
                 "  num_timbrado      AS numTimbrado, " +
+                "  correo_proveedor    AS correoProveedor, " +
+                "  telefono_proveedor  AS telefonoProveedor, " +
+                "  direccion_proveedor AS direccionProveedor, " +
                 "  retencion         AS montoRetencion, " +
                 "  monto             AS baseImponible, " +
                 "  moneda, " +
