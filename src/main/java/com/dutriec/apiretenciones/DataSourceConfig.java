@@ -25,6 +25,8 @@ public class DataSourceConfig {
         return new HikariDataSource(config);
     }
 
+    /*version de entorno Nico, no sobreescribir */
+    /*
     @Bean(name = "mariadbDataSource")
     public DataSource mariadbDataSource() {
         HikariConfig config = new HikariConfig();
@@ -34,6 +36,23 @@ public class DataSourceConfig {
         config.setDriverClassName("org.mariadb.jdbc.Driver");
         return new HikariDataSource(config);
     }
+    */
+
+    //versión entorno Gabriel
+    @Bean(name = "mariadbDataSource")
+    public DataSource mariadbDataSource() {
+        HikariConfig config = new HikariConfig();
+        
+        String url = "jdbc:mariadb://localhost:3306/retenciones_sifen" +
+                    "?disabledAuthenticationPlugins=org.mariadb.jdbc.plugin.authentication.addon.gssapi.WindowsNativeSspiAuthentication" +
+                    "&defaultAuthenticationPlugin=mysql_native_password";
+        config.setJdbcUrl(url);
+        config.setUsername("usuario_retenciones");
+        config.setPassword("password_retenciones");
+        config.setDriverClassName("org.mariadb.jdbc.Driver");
+        return new HikariDataSource(config);
+    }
+
 
     @Primary
     @Bean(name = "sqlAnywhereJdbcTemplate")
