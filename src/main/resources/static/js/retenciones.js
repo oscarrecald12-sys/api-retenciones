@@ -209,6 +209,13 @@ function actualizarInfoSelDash() {
   var n = seleccionadosDash.length;
   var el = document.getElementById("dash-info-sel");
   if (el) el.textContent = n + " factura" + (n !== 1 ? "s" : "") + " seleccionada" + (n !== 1 ? "s" : "");
+  
+  // Habilitar/Deshabilitar el botón "Descargar TXT" dinámicamente
+  var btnDescargar = document.getElementById("btn-descargar-txt");
+  if (btnDescargar) {
+    btnDescargar.disabled = (n === 0);
+  }
+
   var btn = document.getElementById("btn-generar-tesaka");
   if (btn) btn.style.display = n > 0 ? "inline-block" : "none";
 }
@@ -621,6 +628,24 @@ function mostrarMensaje(texto, tipo) {
   el.className = "mensaje " + tipo;
   setTimeout(function() { el.className = "mensaje oculto"; }, 4000);
 }
+
+/**
+ * Devuelve fecha y hora local en formato: DD-MM-AAAA HH:MM
+ */
+function getFechaHoraLocal() {
+    const ahora = new Date();
+    
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    const anio = ahora.getFullYear();
+    
+    const horas = String(ahora.getHours()).padStart(2, '0');
+    const minutos = String(ahora.getMinutes()).padStart(2, '0');
+    
+    return `${dia}-${mes}-${anio} ${horas}:${minutos}`;
+}
+
+//descarga txt cuyo contenido es un arreglo de json, cada elemento del arreglo es una factura a enviar a SIFEN por TESAKA
 function descargarTxt() {
   // Usar seleccionados si hay, sino todos los visibles
   var datos;
@@ -744,6 +769,9 @@ function descargarTxt() {
 
   //luego de descargar el txt, actualizar estado de las facturas a TESAKA_ENVIO_PENDIENTE
   actualizarEstadoTesakaPendienteEnvio(seleccionadosDash);
+
+  // Deseleccionar todas las filas, desactivar el botón y limpiar contadores
+  limpiarSeleccionDash();
 }
 
 // Actualiza el estado a TESAKA_ENVIO_PENDIENTE después de descargar el TXT
@@ -755,7 +783,7 @@ function actualizarEstadoTesakaPendienteEnvio(ids) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ 
       ids: ids.map(Number),
-      estado: "TESAKA_ENVIO_PENDIENTE"
+      estado: "TESAKA_ENVIADO"
     })
   })
   .then(function(r) {
