@@ -145,4 +145,34 @@ public class DashboardController {
         ));
     }
 
+    // Endpoint para guardar la respuesta de la retención manual/modal
+    @PutMapping("/guardar-respuesta")
+    public ResponseEntity<?> guardarRespuestaRetencion(@RequestBody Map<String, Object> request) {
+        String nroComprobante = (String) request.get("nro_comprobante");
+        String estado = (String) request.get("estado");
+        String aprobacionNroControl = (String) request.get("aprobacion_nro_control");
+        String aprobacionComentario = (String) request.get("aprobacion_comentario");
+
+        if (nroComprobante == null || nroComprobante.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "El campo nro_comprobante es requerido."));
+        }
+
+        try {
+            int filasAfectadas = retencionRepository.guardarRespuestaAprobacion(
+                nroComprobante, 
+                estado, 
+                aprobacionNroControl, 
+                aprobacionComentario
+            );
+
+            if (filasAfectadas == 0) {
+                return ResponseEntity.status(404).body(Map.of("error", "No se encontró ninguna retención con el nro_comprobante provisto."));
+            }
+
+            return ResponseEntity.ok(Map.of("mensaje", "Respuesta de retención guardada correctamente."));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Error interno al guardar la respuesta: " + e.getMessage()));
+        }
+    }
+
 }

@@ -423,7 +423,11 @@ function verRespuesta(numDocRet) {
   document.getElementById("detalle-proveedor").textContent = r.razonSocial || r.rucProveedor;
   document.getElementById("detalle-motivo").innerHTML =
     "<pre style='font-size:11px;white-space:pre-wrap;color:#0c447c'>" +
+    "Comentarios fijos. Se puede mostrar aquí los comentarios que se guardaron en el botón de arriba" + "</pre>";
+  /*TODO. aqui se puede colocar los comentarios grabados en la respuesta
+    "<pre style='font-size:11px;white-space:pre-wrap;color:#0c447c'>" +
     String(r.respuestaSifen).replace(/</g, "&lt;") + "</pre>";
+  */
   document.getElementById("overlay-detalle").style.display = "flex";
 }
 
@@ -872,7 +876,7 @@ function abrirRegistrarRespuesta(id) {
 
   document.getElementById("overlay-registrar-respuesta").style.display = "flex";
 }
-COMR
+
 function cerrarRegistrarRespuesta() {
   document.getElementById("overlay-registrar-respuesta").style.display = "none";
 }
@@ -917,6 +921,62 @@ function guardarRespuestaModal() {
     mostrarMensaje("Error: " + err.message, "error");
   });
 }
+
+/*TODO. borrar, duplicado
+function guardarRespuestaRetencion() {
+  // 1. Capturar los valores del modal
+  // NOTA: Asegúrate de guardar el nro_comprobante en un input o recuperarlo correctamente al abrir el modal
+  var nroComprobante = document.getElementById("reg-nrocomprobante") ? document.getElementById("reg-nrocomprobante").value : 0;
+  var estado = document.getElementById("reg-estado").value;
+  var numControl = document.getElementById("reg-numcontrol").value.trim();
+  var comentario = document.getElementById("reg-comentario").value.trim();
+
+  if (!nroComprobante) {
+    alert("Error: No se ha especificado el Número de Comprobante.");
+    return;
+  }
+
+  // 2. Estructurar el payload JSON
+  var datos = {
+    nro_comprobante: nroComprobante,
+    estado: estado,
+    aprobacion_nro_control: numControl,
+    aprobacion_comentario: comentario
+  };
+
+  // 3. Ejecutar la llamada utilizando la URL_API configurada (http://localhost:8080)
+  fetch(URL_API + "/retenciones/guardar-respuesta", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(datos)
+  })
+  .then(function(res) {
+    return res.json().then(function(data) {
+      if (!res.ok) {
+        throw new Error(data.error || "Error desconocido en el servidor");
+      }
+      return data;
+    });
+  })
+  .then(function(data) {
+    alert("Respuesta procesada: " + data.mensaje);
+    cerrarRegistrarRespuesta(); // Cierra tu modal actual
+    
+    // Si tienes una función para recargar la grilla/dashboard, invócala aquí:
+    if (typeof cargarRetenciones === "function") {
+        cargarRetenciones();
+    } else if (typeof getDashboard === "function") {
+        // O la función que uses para refrescar los datos de la vista actual
+    }
+  })
+  .catch(function(err) {
+    console.error(err);
+    alert("Hubo un problema al guardar la respuesta: " + err.message);
+  });
+}
+}*/
 
 // Reutiliza el modal 'overlay-detalle' que ya posees en el HTML para mostrar info estructurada de la línea
 function verDetallesLinea(id) {

@@ -90,4 +90,24 @@ public class RetencionRepository {
         return mariaDb.update(sql, params);
     }
 
+    /**
+     * Guarda la respuesta/aprobación de la retención usando el nro_comprobante.
+     * @param nroComprobante Identificador/PK principal
+     * @param estado El nuevo estado (APROBADO, RECHAZADO, etc.)
+     * @param nroControl Número de control interno
+     * @param comentario Observaciones o motivos
+     * @return Cantidad de filas afectadas
+     */
+    public int guardarRespuestaAprobacion(String nroComprobante, String estado, String nroControl, String comentario) {
+        String sql = """
+            UPDATE  retenciones_enviadas 
+            SET     aprobacion_estado = ?, 
+                    aprobacion_nro_control = ?, 
+                    aprobacion_comentario = ?, 
+                    fecha_actualizacion = NOW() 
+            WHERE   nro_comprobante = ?
+            """;
+        return mariaDb.update(sql, estado, nroControl, comentario, nroComprobante);
+    }
+
 }

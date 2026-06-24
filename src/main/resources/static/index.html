@@ -284,11 +284,11 @@
   <div id="overlay-detalle" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
     <div style="background:white;border-radius:8px;padding:24px;max-width:480px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
       <h3 style="font-size:15px;font-weight:bold;margin-bottom:16px;color:#333">Detalle del rechazo</h3>
-      <p style="font-size:12px;color:#888;margin-bottom:4px">Nº Factura</p>
+      <p style="font-size:12px;color:#888;margin-bottom:4px">Nº Comprobante</p>
       <p id="detalle-nro" style="font-size:13px;font-family:monospace;margin-bottom:12px;color:#333"></p>
       <p style="font-size:12px;color:#888;margin-bottom:4px">Proveedor</p>
       <p id="detalle-proveedor" style="font-size:13px;font-weight:bold;margin-bottom:12px;color:#333"></p>
-      <p style="font-size:12px;color:#888;margin-bottom:4px">Motivo del rechazo</p>
+      <p style="font-size:12px;color:#888;margin-bottom:4px">Comentarios</p>
       <div id="detalle-motivo" style="font-size:13px;color:#a32d2d;background:#fce8e8;border:1px solid #f0a0a0;border-radius:4px;padding:10px;line-height:1.6"></div>
       <div style="margin-top:16px;text-align:right">
         <button onclick="cerrarDetalle()" style="padding:8px 18px;background:#1a4a8a;color:white;border:none;border-radius:4px;font-size:13px;cursor:pointer">Cerrar</button>
@@ -308,22 +308,22 @@
 
       <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
         <div>
-          <label style="font-size:11px;color:#888;display:block;margin-bottom:4px">Número de Comprobante</label>
+          <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Nº de Comprobante</label>
           <input disabled type="text" id="reg-numcomprobante" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font-family:monospace" placeholder="001-001-0000000" />
         </div>
         <div>
-          <label style="font-size:11px;color:#888;display:block;margin-bottom:4px">Estado</label>
+          <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Estado</label>
           <select id="reg-estado" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box">
             <option value="APROBADO">Aprobado</option>
             <option value="RECHAZADO">Rechazado</option>
           </select>
         </div>
         <div>
-          <label style="font-size:11px;color:#888;display:block;margin-bottom:4px">Número de Control</label>
-          <input type="text" id="reg-numcontrol" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box" placeholder="Ej: CDC o Número de control interno" />
+          <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Número de Control</label>
+          <input type="text" id="reg-numcontrol" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box" placeholder="Número de control interno" />
         </div>
         <div>
-          <label style="font-size:11px;color:#888;display:block;margin-bottom:4px">Comentario</label>
+          <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Comentario</label>
           <textarea id="reg-comentario" rows="3" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:vertical" placeholder="Observaciones adicionales..."></textarea>
         </div>
       </div>
@@ -335,6 +335,6 @@
     </div>
   </div>
 
-  <script src="js/retenciones.js?v=5"></script>
+  <script src="js/retenciones.js?v=6"></script>
 </body>
 </html>
