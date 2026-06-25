@@ -145,12 +145,12 @@ public class DashboardController {
         ));
     }
 
-    // Endpoint para guardar la respuesta de la retención manual/modal
-    @PutMapping("/guardar-respuesta")
+    // Endpoint para guardar la respuesta de la retención (que viene de TESAKA)
+    @PostMapping("/guardar-respuesta")  
     public ResponseEntity<?> guardarRespuestaRetencion(@RequestBody Map<String, Object> request) {
         String nroComprobante = (String) request.get("nro_comprobante");
         String estado = (String) request.get("estado");
-        String aprobacionNroControl = (String) request.get("aprobacion_nro_control");
+        String aprobacionNroControl = (String) request.get("aprobacion_nro_control"); //TODO. decidir si se deja este campo: 
         String aprobacionComentario = (String) request.get("aprobacion_comentario");
 
         if (nroComprobante == null || nroComprobante.trim().isEmpty()) {

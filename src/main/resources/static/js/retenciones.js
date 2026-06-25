@@ -859,18 +859,21 @@ function verDetalles() {
 }
 
 // =============================================
-// NUEVAS FUNCIONES: REGISTRAR RESPUESTA Y DETALLES
+// REGISTRAR RESPUESTA Y DETALLES
 // =============================================
 
 function abrirRegistrarRespuesta(id) {
   var r = retencionesDB.find(function(x) { return String(x.id) === String(id); });
   if (!r) return;
 
-  // Cargar datos preexistentes o por defecto en el modal
+  // Cargar datos en el modal
   document.getElementById("reg-id").value = r.id;
   document.getElementById("reg-numcomprobante").value = r.numDocRet || "";
-  document.getElementById("reg-estado").value = (r.estadoSifen === "APROBADO") ? "APROBADO" : "RECHAZADO";
-  document.getElementById("reg-estado").value = "APROBADO"; //valor por defecto en el modal
+  
+  // Valor por defecto
+  document.getElementById("reg-estado").value = "APROBADO";
+  
+  // Limpiar campos
   document.getElementById("reg-numcontrol").value = "";
   document.getElementById("reg-comentario").value = "";
 
@@ -882,7 +885,6 @@ function cerrarRegistrarRespuesta() {
 }
 
 function guardarRespuestaModal() {
-  var id = document.getElementById("reg-id").value;
   var numComprobante = document.getElementById("reg-numcomprobante").value.trim();
   var estado = document.getElementById("reg-estado").value;
   var numControl = document.getElementById("reg-numcontrol").value.trim();
@@ -893,28 +895,31 @@ function guardarRespuestaModal() {
     return;
   }
 
+  // Payload para armar el json exactamente como lo espera el backend (DashboardController)
   var payload = {
-    id: Number(id),
-    numDocRet: numComprobante,
-    estadoSifen: estado,
-    cdcProveedor: numControl,
-    respuestaSifen: comentario
+    nro_comprobante: numComprobante,
+    estado: estado,
+    aprobacion_nro_control: numControl,
+    aprobacion_comentario: comentario
   };
 
-  // Petición al backend de Spring Boot (Ajustar el endpoint según tu Controller)
-  fetch(URL_API + "/retenciones/registrar-respuesta", {
+  fetch(URL_API + "/retenciones/guardar-respuesta", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   })
   .then(function(r) {
-    if (!r.ok) throw new Error("Error al guardar la respuesta en el servidor");
+    if (!r.ok) {
+      return r.json().then(function(err) {
+        throw new Error(err.error || "Error del servidor");
+      });
+    }
     return r.json();
   })
   .then(function(data) {
     mostrarMensaje("Respuesta registrada exitosamente ✓", "ok");
     cerrarRegistrarRespuesta();
-    cargarDashboard(); // Recarga la tabla de MaridDB para reflejar los cambios
+    cargarDashboard(); // Actualiza la tabla del dashboard
   })
   .catch(function(err) {
     console.error(err);
@@ -988,6 +993,7 @@ function verDetallesLinea(id) {
   
   // Construimos una visualización detallada en formato texto/HTML
   var detalleHtml = "<div style='line-height: 1.5; font-size: 12px; color: #333;'>" +
+    /*
     "<strong>RUC:</strong> " + (r.rucProveedor || '—') + "<br/>" +
     "<strong>Timbrado:</strong> " + (r.numTimbrado || '—') + "<br/>" +
     "<strong>Nº Factura Asociada:</strong> " + (r.nroFactura || '—') + "<br/>" +
@@ -995,7 +1001,8 @@ function verDetallesLinea(id) {
     "<strong>Monto Retención:</strong> Gs. " + formatearNumero(r.montoRetencion) + "<br/>" +
     "<strong>Estado actual:</strong> " + r.estadoSifen + "<br/>" +
     "<strong>Número de control (Respuesta):</strong> " + (r.cdcProveedor || '—') + "<br/>" +
-    "<strong>Comentario/Respuesta:</strong> <pre style='margin:5px 0 0 0; background:#f5f5f5; padding:6px; font-size:11px; overflow-x:auto'>" + (r.respuestaSifen || 'Sin comentarios') + "</pre>" +
+    */
+    "<pre style='margin:5px 0 0 0; background:#f5f5f5; padding:6px; font-size:11px; overflow-x:auto'>" + (r.respuestaSifen || 'Sin comentarios') + "</pre>" +
     "</div>";
 
   document.getElementById("detalle-motivo").innerHTML = detalleHtml;
