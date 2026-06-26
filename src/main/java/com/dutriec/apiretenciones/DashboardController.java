@@ -93,9 +93,13 @@ public class DashboardController {
                 "  motivo_rechazo    AS respuestaSifen, " +
                 "  fecha_envio       AS fechaEnvio, " +
                 "  fecha_creacion    AS fechaCreacion, " +
-                "  estado_envio_tesaka AS estado_envio_tesaka " +
-                "FROM retenciones_enviadas " +
-                "ORDER BY fecha_creacion DESC LIMIT 200";
+                "  estado_envio_tesaka AS estado_envio_tesaka, " +
+                // === CAMPOS DE RESPUESTA TESAKA ===
+                "  aprobacion_estado       AS aprobacion_estado, " +
+                "  aprobacion_nro_control  AS aprobacion_nro_control, " +
+                "  aprobacion_comentario   AS aprobacion_comentario" +
+                "  FROM retenciones_enviadas " +
+                "  ORDER BY fecha_creacion DESC LIMIT 200";
             //*debug
             //System.out.println("obtenerRetenciones - mariaDb.queryForList:");
             //System.out.println(sqlQuery);
@@ -172,6 +176,24 @@ public class DashboardController {
             return ResponseEntity.ok(Map.of("mensaje", "Respuesta de retención guardada correctamente."));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", "Error interno al guardar la respuesta: " + e.getMessage()));
+        }
+    }
+
+    // Nuevo endpoint: Obtener datos completos de la respuesta TESAKA
+    @GetMapping("/respuesta/{nroComprobante}")
+    public ResponseEntity<?> obtenerRespuestaTesaka(@PathVariable String nroComprobante) {
+        try {
+            Map<String, Object> respuesta = retencionRepository.obtenerRespuestaPorComprobante(nroComprobante);
+            
+            if (respuesta == null || respuesta.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            return ResponseEntity.ok(respuesta);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                "error", "Error al obtener respuesta: " + e.getMessage()
+            ));
         }
     }
 

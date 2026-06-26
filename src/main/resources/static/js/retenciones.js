@@ -866,16 +866,13 @@ function abrirRegistrarRespuesta(id) {
   var r = retencionesDB.find(function(x) { return String(x.id) === String(id); });
   if (!r) return;
 
-  // Cargar datos en el modal
   document.getElementById("reg-id").value = r.id;
   document.getElementById("reg-numcomprobante").value = r.numDocRet || "";
   
-  // Valor por defecto
-  document.getElementById("reg-estado").value = "APROBADO";
-  
-  // Limpiar campos
-  document.getElementById("reg-numcontrol").value = "";
-  document.getElementById("reg-comentario").value = "";
+  // Cargar valores ya guardados si existen
+  document.getElementById("reg-estado").value = r.estadoSifen || "APROBADO";
+  document.getElementById("reg-numcontrol").value = r.aprobacion_nro_control || "";
+  document.getElementById("reg-comentario").value = r.aprobacion_comentario || "";
 
   document.getElementById("overlay-registrar-respuesta").style.display = "flex";
 }
@@ -983,6 +980,7 @@ function guardarRespuestaRetencion() {
 }
 }*/
 
+/*v1 muestra todos los datos de la fila en un modal, no muestra los datos de la respuesta TESAKA
 // Reutiliza el modal 'overlay-detalle' que ya posees en el HTML para mostrar info estructurada de la línea
 function verDetallesLinea(id) {
   var r = retencionesDB.find(function(x) { return String(x.id) === String(id); });
@@ -993,7 +991,7 @@ function verDetallesLinea(id) {
   
   // Construimos una visualización detallada en formato texto/HTML
   var detalleHtml = "<div style='line-height: 1.5; font-size: 12px; color: #333;'>" +
-    /*
+    //
     "<strong>RUC:</strong> " + (r.rucProveedor || '—') + "<br/>" +
     "<strong>Timbrado:</strong> " + (r.numTimbrado || '—') + "<br/>" +
     "<strong>Nº Factura Asociada:</strong> " + (r.nroFactura || '—') + "<br/>" +
@@ -1001,9 +999,31 @@ function verDetallesLinea(id) {
     "<strong>Monto Retención:</strong> Gs. " + formatearNumero(r.montoRetencion) + "<br/>" +
     "<strong>Estado actual:</strong> " + r.estadoSifen + "<br/>" +
     "<strong>Número de control (Respuesta):</strong> " + (r.cdcProveedor || '—') + "<br/>" +
-    */
-    "<pre style='margin:5px 0 0 0; background:#f5f5f5; padding:6px; font-size:11px; overflow-x:auto'>" + (r.respuestaSifen || 'Sin comentarios') + "</pre>" +
+    //
+    "<pre style='margin:5px 0 0 0; background:#f5f5f5; padding:6px; font-size:11px; overflow-x:auto'>" + (r.aprobacionComentario || 'Sin comentarios') + "</pre>" +
     "</div>";
+
+  document.getElementById("detalle-motivo").innerHTML = detalleHtml;
+  document.getElementById("overlay-detalle").style.display = "flex";
+}
+  */
+
+function verDetallesLinea(id) {
+  var r = retencionesDB.find(function(x) { return String(x.id) === String(id); });
+  if (!r) return;
+
+  document.getElementById("detalle-nro").textContent = r.numDocRet || "—";
+  document.getElementById("detalle-proveedor").textContent = r.razonSocial || "—";
+
+  var detalleHtml = "<div style='line-height: 1.6; font-size: 13px; color: #333;'>";
+
+  //-detalleHtml += "<strong>N° Comprobante:</strong> " + (r.numDocRet || '—') + "<br>";
+  //-detalleHtml += "<strong>Estado SIFEN:</strong> " + (r.estadoSifen || '—') + "<br><br>";
+
+  detalleHtml += "<strong>Estado:</strong> " + (r.aprobacion_estado || '—') + "<br>";
+  detalleHtml += "<strong>N° Control:</strong> " + (r.aprobacion_nro_control || '—') + "<br>";
+  detalleHtml += "<strong>Comentario:</strong> " + (r.aprobacion_comentario || 'Sin comentario registrado') + "<br>";
+  detalleHtml += "</div>";
 
   document.getElementById("detalle-motivo").innerHTML = detalleHtml;
   document.getElementById("overlay-detalle").style.display = "flex";
