@@ -661,8 +661,9 @@ function getFechaHoraLocal() {
     
     const horas = String(ahora.getHours()).padStart(2, '0');
     const minutos = String(ahora.getMinutes()).padStart(2, '0');
+    const segundos = String(ahora.getSeconds()).padStart(2, '0');
     
-    return `${dia}-${mes}-${anio} ${horas}:${minutos}`;
+    return `${dia}-${mes}-${anio} ${horas}:${minutos}:${segundos}`;
 }
 
 //descarga txt cuyo contenido es un arreglo de json, cada elemento del arreglo es una factura a enviar a SIFEN por TESAKA
@@ -685,7 +686,7 @@ function descargarTxt() {
 
   var arregloJson = [];
 
-  // Recorremos los IDs seleccionados y buscamos su información en retencionesDB
+  // Recorremos los "IDs" seleccionados y buscamos su información en retencionesDB
   seleccionadosDash.forEach(function(id) {
     var r = retencionesDB.find(function(x) { return String(x.id) === String(id); });
     if (r) {
@@ -739,7 +740,7 @@ function descargarTxt() {
           "cuotas": 0, //Siempre será 0, pq la retención no se cobra en cuotas
           "tipoComprobante": 1, // Siempre será 1 = Factura estándar
           "numeroComprobanteVenta": r.nroFactura || "001-001-0000000", 
-          "fecha": r.fechaEnvio ? String(r.fechaEnvio).substring(0, 10) : '-',
+          "fecha": r.fechaEnvio ? String(r.fechaEnvio).substring(0, 10) : new Date().toISOString().split('T')[0], //fecha actual por defecto
           "numeroTimbrado": r.timbrado || "0" // Ajustado a "0" por indicaciones de Tesakã
         },
         "detalle": [
