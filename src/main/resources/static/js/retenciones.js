@@ -163,7 +163,7 @@ function cargarDashboard() {
       document.getElementById("dash-enviadas").textContent   = data.resumen.enviadas   || 0;
       document.getElementById("dash-pendientes").textContent = data.resumen.pendientes || 0;
       document.getElementById("dash-errores").textContent    = data.resumen.errores    || 0;
-      //TODO. quitar
+      //TODO. quitar: no hace falta
       //- document.getElementById("dash-fisicas").textContent    = data.resumen.fisicas    || 0;
       //- document.getElementById("dash-monto").textContent      = "Gs. " + formatearNumero(data.resumen.montoTotal || 0);
       retencionesDB = data.retenciones || [];
