@@ -1,6 +1,7 @@
 package com.dutriec.apiretenciones;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -108,6 +109,20 @@ public class RetencionRepository {
             WHERE   nro_comprobante = ?
             """;
         return mariaDb.update(sql, estado, nroControl, comentario, nroComprobante);
+    }
+     public Map<String, Object> obtenerRespuestaPorComprobante(String nroComprobante) {
+        String sql = """
+            SELECT  nro_comprobante,
+                    estado,
+                    aprobacion_estado,
+                    aprobacion_nro_control,
+                    aprobacion_comentario,
+                    fecha_actualizacion
+            FROM    retenciones_enviadas
+            WHERE   nro_comprobante = ?
+            """;
+        List<Map<String, Object>> resultado = mariaDb.queryForList(sql, nroComprobante);
+        return resultado.isEmpty() ? null : resultado.get(0);
     }
 
 }

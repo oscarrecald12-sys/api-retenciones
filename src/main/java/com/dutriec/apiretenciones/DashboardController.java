@@ -53,6 +53,26 @@ public class DashboardController {
         return resp;
     }
 
+    @PostMapping("/guardar-respuesta/{id}")
+    public Map<String, Object> guardarRespuesta(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        Map<String, Object> resp = new HashMap<>();
+        try {
+            String respuesta = body.getOrDefault("respuesta", "");
+            int rows = mariaDb.update(
+                "UPDATE retenciones_enviadas SET motivo_rechazo = ?, fecha_envio = COALESCE(fecha_envio, NOW()) WHERE id = ?",
+                respuesta, id
+            );
+            resp.put("ok", rows > 0);
+            resp.put("mensaje", rows > 0 ? "Respuesta guardada" : "Registro no encontrado");
+        } catch (Exception e) {
+            resp.put("ok", false);
+            resp.put("mensaje", e.getMessage());
+        }
+        return resp;
+    }
+
     private long contarPorEstado(String estado) {
         try {
             Long n = mariaDb.queryForObject(

@@ -35,6 +35,8 @@ public class FacturaController {
     }
 
     // POST — recibe IDs y procesa el envío al SIFEN
+    // FIX: se agregó printStackTrace() en el catch para exponer el error real
+    //      en lugar de solo mostrar el mensaje superficial.
     @PostMapping("/enviar-lote")
     public List<Resultado> enviarLote(@RequestBody List<Long> ids) {
 
@@ -53,6 +55,17 @@ public class FacturaController {
                     continue;
                 }
 
+                // Guard: si factura_fisica sigue null aquí, loguear y continuar
+                if (factura.getFacturaFisica() == null || factura.getFacturaFisica().isBlank()) {
+                    System.err.println("[enviar-lote] factura_fisica null para id=" + id
+                            + " — revisar campo en SQL Anywhere");
+                    r.setEstado("ERROR");
+                    r.setMotivo("nroComprobante (factura_fisica) es null para factura " + id
+                            + ". Verificar campo factura_fisica en SQL Anywhere.");
+                    resultados.add(r);
+                    continue;
+                }
+
                 // ---- Traer datos completos del proveedor desde SQL Anywhere ----
                 Map<String, Object> proveedor = obtenerDatosProveedor(id);
 
@@ -60,17 +73,20 @@ public class FacturaController {
                 String numDocRet = retencionRepo.generarNumDocRet();
 
                 // ---- Calcular retención (30% IVA) ----
-                double montoGravado = factura.getMontoGravado() != null ? factura.getMontoGravado() : 0;
+                double montoGravado  = factura.getMontoGravado()  != null ? factura.getMontoGravado()  : 0;
                 double montoImpuesto = factura.getMontoImpuesto() != null ? factura.getMontoImpuesto() : 0;
-                double retencion = Math.round(montoImpuesto * 0.30);
+                double retencion     = Math.round(montoImpuesto * 0.30);
 
-                String ruc = proveedor != null ? String.valueOf(proveedor.get("ruc")) : factura.getRuc();
+                String ruc         = proveedor != null ? String.valueOf(proveedor.get("ruc"))         : factura.getRuc();
                 String razonSocial = proveedor != null ? String.valueOf(proveedor.get("razon_social")) : "";
-                String correo = proveedor != null && proveedor.get("mail") != null ? String.valueOf(proveedor.get("mail")) : null;
-                String telefono = proveedor != null && proveedor.get("telefonos") != null ? String.valueOf(proveedor.get("telefonos")) : null;
-                String direccion = proveedor != null && proveedor.get("direccion") != null ? String.valueOf(proveedor.get("direccion")) : null;
+                String correo      = proveedor != null && proveedor.get("mail")      != null ? String.valueOf(proveedor.get("mail"))      : null;
+                String telefono    = proveedor != null && proveedor.get("telefonos") != null ? String.valueOf(proveedor.get("telefonos")) : null;
+                String direccion   = proveedor != null && proveedor.get("direccion") != null ? String.valueOf(proveedor.get("direccion")) : null;
 
-                // ---- Guardar en MariaDB con datos completos del proveedor ----
+                // ---- Guardar en MariaDB ----
+                // NOTA: si las columnas num_timbrado / correo_proveedor / telefono_proveedor /
+                //       direccion_proveedor no existen aún en tu BD, ejecuta primero
+                //       migration_add_columns.sql incluido en este paquete de corrección.
                 mariaDb.update(
                     "INSERT INTO retenciones_enviadas " +
                     "(id_factura_orig, nro_comprobante, ruc_proveedor, razon_social, " +
@@ -96,6 +112,9 @@ public class FacturaController {
                 resultados.add(r);
 
             } catch (Exception e) {
+                // FIX: printStackTrace() para ver el error completo en la consola Spring
+                System.err.println("[enviar-lote] ERROR procesando factura " + id + ": " + e.getMessage());
+                e.printStackTrace();
                 r.setEstado("ERROR");
                 r.setMotivo(e.getMessage());
                 resultados.add(r);
@@ -106,7 +125,6 @@ public class FacturaController {
 
     // =========================================================================
     // Trae los datos completos del proveedor desde SQL Anywhere
-    // a partir del ID de la factura
     // =========================================================================
     private Map<String, Object> obtenerDatosProveedor(Long idFactura) {
         try {
@@ -118,7 +136,7 @@ public class FacturaController {
             );
             return resultado.isEmpty() ? null : resultado.get(0);
         } catch (Exception e) {
-            System.err.println("Error obteniendo datos del proveedor: " + e.getMessage());
+            System.err.println("[obtenerDatosProveedor] Error para factura " + idFactura + ": " + e.getMessage());
             return null;
         }
     }

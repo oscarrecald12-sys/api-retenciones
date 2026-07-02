@@ -43,10 +43,14 @@ public class FacturaRepository {
     }
 
     // Trae una factura por ID
+    // FIX: se agregó fr.compra al SELECT para que coincida con mapearFactura()
+    // Sin esta columna el driver de SQL Anywhere desplazaba el mapeo de todas
+    // las columnas siguientes, dejando factura_fisica como null.
     public Factura obtenerPorId(Long id) {
 
         String sql
                 = "SELECT fr.factura, fr.factura_fisica, fr.fecha, "
+                + "fr.compra, "                                  // ← FIX: columna faltante
                 + "p.razon_social, p.primer_nombre, p.ruc, "
                 + "fr.monto_gravado, fr.monto_impuesto, "
                 + "fr.monto_gravado_5, fr.monto_impuesto_5, "
@@ -72,9 +76,19 @@ public class FacturaRepository {
     private Factura mapearFactura(ResultSet rs) throws SQLException {
         Factura f = new Factura();
         f.setFactura(rs.getLong("factura"));
-        f.setFacturaFisica(rs.getString("factura_fisica"));
+
+        String facturaFisica = rs.getString("factura_fisica");
+        if (facturaFisica == null || facturaFisica.isBlank()) {
+            System.err.println("[WARN] factura_fisica es null/blank para factura id="
+                    + rs.getLong("factura")
+                    + " — verificar campo en SQL Anywhere");
+        }
+        f.setFacturaFisica(facturaFisica);
+
         f.setFecha(rs.getString("fecha"));
-        f.setCompra(rs.getLong("compra"));
+
+        long compraVal = rs.getLong("compra");
+        f.setCompra(rs.wasNull() ? null : compraVal);
 
         String razonSocial = rs.getString("razon_social");
         String primerNombre = rs.getString("primer_nombre");

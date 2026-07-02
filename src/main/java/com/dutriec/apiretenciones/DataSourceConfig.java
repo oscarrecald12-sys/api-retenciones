@@ -22,11 +22,16 @@ public class DataSourceConfig {
         config.setDriverClassName("com.sybase.jdbc3.jdbc.SybDriver");
         config.setConnectionTestQuery("SELECT 1");
         config.setInitializationFailTimeout(-1);
+        config.setMaximumPoolSize(3);
+        config.setMinimumIdle(0);
+        config.setMaxLifetime(55000);
+        config.setIdleTimeout(30000);
+        config.setConnectionTimeout(60000);
+        config.setValidationTimeout(5000);
         return new HikariDataSource(config);
     }
 
-    /*version de entorno Nico, no sobreescribir */
-    /*
+    // version entorno Nico (Licitaciones)
     @Bean(name = "mariadbDataSource")
     public DataSource mariadbDataSource() {
         HikariConfig config = new HikariConfig();
@@ -36,23 +41,6 @@ public class DataSourceConfig {
         config.setDriverClassName("org.mariadb.jdbc.Driver");
         return new HikariDataSource(config);
     }
-    */
-
-    //versión entorno Gabriel
-    @Bean(name = "mariadbDataSource")
-    public DataSource mariadbDataSource() {
-        HikariConfig config = new HikariConfig();
-        
-        String url = "jdbc:mariadb://localhost:3306/retenciones_sifen" +
-                    "?disabledAuthenticationPlugins=org.mariadb.jdbc.plugin.authentication.addon.gssapi.WindowsNativeSspiAuthentication" +
-                    "&defaultAuthenticationPlugin=mysql_native_password";
-        config.setJdbcUrl(url);
-        config.setUsername("usuario_retenciones");
-        config.setPassword("password_retenciones");
-        config.setDriverClassName("org.mariadb.jdbc.Driver");
-        return new HikariDataSource(config);
-    }
-
 
     @Primary
     @Bean(name = "sqlAnywhereJdbcTemplate")

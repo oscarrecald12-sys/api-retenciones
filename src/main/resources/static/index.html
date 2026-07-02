@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Retenciones SIFEN — DUTRIEC SA</title>
   <link rel="stylesheet" href="css/estilos.css?v=3">
 </head>
+
 <body>
 
   <!-- ====================================================
@@ -74,30 +76,15 @@
             <p class="tarjeta-valor" id="stat-total">0</p>
           </div>
           <div class="tarjeta">
-            <p class="tarjeta-label">Sin autorización</p>
-            <p class="tarjeta-valor color-gris" id="stat-sinauth">0</p>
-          </div>
-          <div class="tarjeta">
             <p class="tarjeta-label">Pendiente de envío</p>
             <p class="tarjeta-valor color-amarillo" id="stat-pendiente">0</p>
-          </div>
-          <div class="tarjeta">
-            <p class="tarjeta-label">Procesadas</p>
-            <p class="tarjeta-valor color-verde" id="stat-procesado">0</p>
-          </div>
-          <div class="tarjeta">
-            <p class="tarjeta-label">Rechazadas</p>
-            <p class="tarjeta-valor color-rojo" id="stat-rechazado">0</p>
           </div>
         </div>
 
         <!-- PESTAÑAS ESTADO -->
         <div class="pestanas">
           <button class="pestana activa" onclick="cambiarPestana('todas', this)">Todas</button>
-          <button class="pestana" onclick="cambiarPestana('PENDIENTE_AUTH', this)">Sin autorización</button>
           <button class="pestana" onclick="cambiarPestana('PENDIENTE', this)">Pendiente de envío</button>
-          <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Procesadas</button>
-          <button class="pestana" onclick="cambiarPestana('RECHAZADO', this)">Rechazadas</button>
         </div>
 
         <!-- FILTROS Y ACCIONES -->
@@ -145,7 +132,6 @@
                 <th class="der">Retención 30%</th>
                 <th>Fecha Emisión</th>
                 <th>Estado</th>
-                <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="cuerpo-tabla"></tbody>
@@ -198,24 +184,14 @@
           <div class="filtros">
             <input type="text" id="dash-filtro-ruc" placeholder="Buscar RUC o Nº doc..." oninput="filtrarDashboard()">
             <button class="btn-azul" onclick="cargarDashboard()">&#8635; Actualizar</button>
-            <!--button class="btn-azul" onclick="descargarTxt()">&#11015; Descargar TXT</button>
-            <div class="dropdown-acciones">
-              <button class="btn-azul" onclick="toggleDropdown()">&#9776; Acciones &#9660;</button>
-              <div class="dropdown-menu" id="dropdown-menu" style="display:none">
-                <button onclick="guardarRespuesta(); toggleDropdown()">&#128190; Guardar respuesta</button>
-                <button onclick="verDetalles(); toggleDropdown()">&#128269; Ver detalles</button>
-              </div>
-            </div-->
+            <button class="btn-azul" onclick="descargarTxt()">&#11015; Descargar TXT</button>
           </div>
           <div class="acciones-sel">
-            <!-- contador de facturas seleccionadas -->
             <span id="dash-info-sel">0 facturas seleccionadas</span>
-            <!-- descarga el txt conteniendo el arreglo de json con las facturas seleccionadas (que se enviarán por el sistema Tesaká)-->
-            <button class="btn-aprobar" id="btn-descargar-txt" onclick="descargarTxt()" disabled>&#11123; Descargar TXT</button>          </div>
-            <!--button class="btn-aprobar" id="btn-generar-tesaka" onclick="generarTesaka()" style="display:none">&#10003; Generar TESAKA</button-->
+            <button class="btn-aprobar" id="btn-descargar-txt" onclick="descargarTxt()" disabled>&#11123; Descargar
+              TXT</button>
             <button class="btn-secundario" onclick="limpiarSeleccionDash()">Limpiar selección</button>
           </div>
-
         </div>
 
         <!-- TABLA RETENCIONES ENVIADAS -->
@@ -250,6 +226,7 @@
           <div id="log-contenedor"></div>
         </div>
 
+
       </div><!-- /vista-dashboard -->
 
     </div><!-- /contenedor -->
@@ -257,35 +234,63 @@
   </div><!-- /pantalla-principal -->
 
   <!-- MODAL RECHAZO SIFEN -->
-  <div id="overlay-rechazo" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
-    <div style="background:white;border-radius:8px;padding:24px;max-width:500px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+  <div id="overlay-rechazo"
+    style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
+    <div
+      style="background:white;border-radius:8px;padding:24px;max-width:500px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-        <span style="width:32px;height:32px;border-radius:50%;background:#fce8e8;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#10007;</span>
+        <span
+          style="width:32px;height:32px;border-radius:50%;background:#fce8e8;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#10007;</span>
         <h3 style="font-size:15px;font-weight:bold;color:#a32d2d">Detalle del rechazo SIFEN</h3>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Nº doc ret</p><p id="rec-numdoc" style="font-size:13px;font-family:monospace;color:#333"></p></div>
-        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Proveedor</p><p id="rec-proveedor" style="font-size:13px;font-weight:bold;color:#333"></p></div>
-        <div><p style="font-size:11px;color:#888;margin-bottom:3px">RUC</p><p id="rec-ruc" style="font-size:13px;color:#333"></p></div>
-        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Nº Factura</p><p id="rec-factura" style="font-size:13px;font-family:monospace;color:#333"></p></div>
-        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Código respuesta</p><p id="rec-codres" style="font-size:14px;font-weight:bold;color:#a32d2d"></p></div>
-        <div><p style="font-size:11px;color:#888;margin-bottom:3px">Estado SIFEN</p><p id="rec-estres" style="font-size:13px;color:#a32d2d"></p></div>
-        <div style="grid-column:1/-1"><p style="font-size:11px;color:#888;margin-bottom:3px">Fecha de envio</p><p id="rec-fecha" style="font-size:13px;color:#333"></p></div>
+        <div>
+          <p style="font-size:11px;color:#888;margin-bottom:3px">Nº doc ret</p>
+          <p id="rec-numdoc" style="font-size:13px;font-family:monospace;color:#333"></p>
+        </div>
+        <div>
+          <p style="font-size:11px;color:#888;margin-bottom:3px">Proveedor</p>
+          <p id="rec-proveedor" style="font-size:13px;font-weight:bold;color:#333"></p>
+        </div>
+        <div>
+          <p style="font-size:11px;color:#888;margin-bottom:3px">RUC</p>
+          <p id="rec-ruc" style="font-size:13px;color:#333"></p>
+        </div>
+        <div>
+          <p style="font-size:11px;color:#888;margin-bottom:3px">Nº Factura</p>
+          <p id="rec-factura" style="font-size:13px;font-family:monospace;color:#333"></p>
+        </div>
+        <div>
+          <p style="font-size:11px;color:#888;margin-bottom:3px">Código respuesta</p>
+          <p id="rec-codres" style="font-size:14px;font-weight:bold;color:#a32d2d"></p>
+        </div>
+        <div>
+          <p style="font-size:11px;color:#888;margin-bottom:3px">Estado SIFEN</p>
+          <p id="rec-estres" style="font-size:13px;color:#a32d2d"></p>
+        </div>
+        <div style="grid-column:1/-1">
+          <p style="font-size:11px;color:#888;margin-bottom:3px">Fecha de envio</p>
+          <p id="rec-fecha" style="font-size:13px;color:#333"></p>
+        </div>
       </div>
       <div style="background:#fce8e8;border:1px solid #f0a0a0;border-radius:4px;padding:12px;margin-bottom:16px">
         <p style="font-size:11px;color:#888;margin-bottom:4px">Motivo del rechazo</p>
         <p id="rec-msgres" style="font-size:13px;color:#a32d2d;font-weight:500"></p>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px">
-        <button onclick="cerrarRechazo()" style="padding:8px 16px;background:white;color:#333;border:1px solid #ccc;border-radius:4px;font-size:13px;cursor:pointer">Cerrar</button>
-        <button onclick="reenviarDesdeModal()" style="padding:8px 16px;background:#1a4a8a;color:white;border:none;border-radius:4px;font-size:13px;font-weight:bold;cursor:pointer">Reenviar</button>
+        <button onclick="cerrarRechazo()"
+          style="padding:8px 16px;background:white;color:#333;border:1px solid #ccc;border-radius:4px;font-size:13px;cursor:pointer">Cerrar</button>
+        <button onclick="reenviarDesdeModal()"
+          style="padding:8px 16px;background:#1a4a8a;color:white;border:none;border-radius:4px;font-size:13px;font-weight:bold;cursor:pointer">Reenviar</button>
       </div>
     </div>
   </div>
 
   <!-- MODAL DETALLE -->
-  <div id="overlay-detalle" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
-    <div style="background:white;border-radius:8px;padding:24px;max-width:480px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+  <div id="overlay-detalle"
+    style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
+    <div
+      style="background:white;border-radius:8px;padding:24px;max-width:480px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
       <h3 style="font-size:15px;font-weight:bold;margin-bottom:16px;color:#333">Detalle de la respuesta</h3>
       <p style="font-size:12px;color:black;margin-bottom:4px">Nº Comprobante</p>
       <p id="detalle-nro" style="font-size:13px;font-family:monospace;margin-bottom:12px;color:#333"></p>
@@ -293,52 +298,69 @@
       <p id="detalle-proveedor" style="font-size:13px;font-weight:bold;margin-bottom:12px;color:#333"></p>
       <!--p style="font-size:12px;color:black;margin-bottom:4px">Más datos</p-->
       <p style="font-size:12px;color:black;margin-bottom:4px">Respuesta TESAKA</p>
-      <div id="detalle-motivo" style="font-size:13px;color:#a32d2d;background:#fce8e8;border:1px solid #f0a0a0;border-radius:4px;padding:10px;line-height:1.6"></div>
+      <div id="detalle-motivo"
+        style="font-size:13px;color:#a32d2d;background:#fce8e8;border:1px solid #f0a0a0;border-radius:4px;padding:10px;line-height:1.6">
+      </div>
       <div style="margin-top:16px;text-align:right">
-        <button onclick="cerrarDetalle()" style="padding:8px 18px;background:#1a4a8a;color:white;border:none;border-radius:4px;font-size:13px;cursor:pointer">Cerrar</button>
+        <button onclick="cerrarDetalle()"
+          style="padding:8px 18px;background:#1a4a8a;color:white;border:none;border-radius:4px;font-size:13px;cursor:pointer">Cerrar</button>
       </div>
     </div>
   </div>
 
   <!-- Modal para registrar respuesta de SIFEN -->
-  <div id="overlay-registrar-respuesta" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
-    <div style="background:white;border-radius:8px;padding:24px;max-width:500px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+  <div id="overlay-registrar-respuesta"
+    style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center">
+    <div
+      style="background:white;border-radius:8px;padding:24px;max-width:500px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-        <span style="width:32px;height:32px;border-radius:50%;background:#e8f5e0;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;color:#2d7a0e">&#128190;</span>
+        <span
+          style="width:32px;height:32px;border-radius:50%;background:#e8f5e0;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;color:#2d7a0e">&#128190;</span>
         <h3 style="font-size:15px;font-weight:bold;color:#333;margin:0">Registrar Respuesta SIFEN</h3>
       </div>
-      
+
       <input type="hidden" id="reg-id" />
 
       <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
         <div>
           <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Nº de Comprobante</label>
-          <input disabled type="text" id="reg-numcomprobante" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font-family:monospace" placeholder="001-001-0000000" />
+          <input disabled type="text" id="reg-numcomprobante"
+            style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font-family:monospace"
+            placeholder="001-001-0000000" />
         </div>
         <div>
           <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Estado</label>
-          <select id="reg-estado" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box">
+          <select id="reg-estado"
+            style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box">
             <option value="APROBADO">Aprobado</option>
             <option value="RECHAZADO">Rechazado</option>
           </select>
         </div>
         <div>
           <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Número de Control</label>
-          <input type="text" id="reg-numcontrol" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box" placeholder="Número de control interno" />
+          <input type="text" id="reg-numcontrol"
+            style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box"
+            placeholder="Número de control interno" />
         </div>
         <div>
           <label style="font-size:11px;color:black;display:block;margin-bottom:4px">Comentario</label>
-          <textarea id="reg-comentario" rows="3" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:vertical" placeholder="Respuesta/Observaciones"></textarea>
+          <textarea id="reg-comentario" rows="3"
+            style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:vertical"
+            placeholder="Respuesta/Observaciones"></textarea>
         </div>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:8px">
-        <button onclick="cerrarRegistrarRespuesta()" style="padding:8px 16px;background:white;color:#333;border:1px solid #ccc;border-radius:4px;font-size:13px;cursor:pointer">Cancelar</button>
-        <button onclick="guardarRespuestaModal()" style="padding:8px 16px;background:#2d7a0e;color:white;border:none;border-radius:4px;font-size:13px;font-weight:bold;cursor:pointer">Guardar Respuesta</button>
+        <button onclick="cerrarRegistrarRespuesta()"
+          style="padding:8px 16px;background:white;color:#333;border:1px solid #ccc;border-radius:4px;font-size:13px;cursor:pointer">Cancelar</button>
+        <button onclick="guardarRespuestaModal()"
+          style="padding:8px 16px;background:#2d7a0e;color:white;border:none;border-radius:4px;font-size:13px;font-weight:bold;cursor:pointer">Guardar
+          Respuesta</button>
       </div>
     </div>
   </div>
 
   <script src="js/retenciones.js?v=8"></script>
 </body>
+
 </html>

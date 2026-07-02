@@ -1,7 +1,7 @@
 1// =============================================
 // CONFIGURACION
 // =============================================
-var URL_API = "http://localhost:8080";
+var URL_API = "http://127.0.0.1:8080";
 var MONTO_MINIMO = 1218000;
 var seleccionados = [];
 var pestanaActual = "todas";
@@ -51,6 +51,8 @@ function ingresarAlSistema(usuario) {
   document.getElementById("pantalla-login").style.display = "none";
   document.getElementById("pantalla-principal").style.display = "block";
   document.getElementById("label-usuario").textContent = usuario;
+  var logSeccion = document.querySelector(".log-seccion");
+  if (logSeccion) logSeccion.style.display = "none";
   cargarFacturas();
 }
 
@@ -78,7 +80,7 @@ document.addEventListener("DOMContentLoaded", function() {
   });
   document.getElementById("btn-enviar").addEventListener("click", enviarAlSifen);
   var usr = sessionStorage.getItem("usr_retencion");
-  if (usr && USUARIOS[usr]) { ingresarAlSistema(usr); }
+  if (usr && USUARIOS[usr]) { setTimeout(function() { ingresarAlSistema(usr); }, 2000); }
 });
 
 // =============================================
@@ -91,7 +93,8 @@ function cambiarVista(vista, elemento) {
   elemento.classList.add("activa");
   document.getElementById("vista-facturas").style.display  = (vista === "facturas")  ? "block" : "none";
   document.getElementById("vista-dashboard").style.display = (vista === "dashboard") ? "block" : "none";
-  //AQUI
+  var logSeccion = document.querySelector(".log-seccion");
+  if (logSeccion) logSeccion.style.display = (vista === "dashboard") ? "block" : "none";
   if (vista === "dashboard") cargarDashboard();
 }
 
@@ -142,9 +145,18 @@ function cargarFacturas() {
       renderTabla();
     })
     .catch(function(error) {
-      mostrarMensaje("Error al cargar facturas: " + error.message, "error");
-      document.getElementById("cuerpo-tabla").innerHTML =
-        "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo conectar con la API.</td></tr>";
+      if (facturas.length > 0) {
+        mostrarMensaje("Error al cargar facturas: " + error.message, "error");
+        document.getElementById("cuerpo-tabla").innerHTML =
+          "<tr><td colspan='9' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo conectar con la API.</td></tr>";
+      } else {
+        document.getElementById("cuerpo-tabla").innerHTML =
+          "<tr><td colspan='9' style='text-align:center;padding:2rem;color:#aaa'>" +
+          "<div class='spinner-carga'></div>" +
+          "<div style='margin-top:10px;font-size:13px'>Conectando...</div>" +
+          "</td></tr>";
+        setTimeout(function() { cargarFacturas(); }, 3000);
+      }
     });
 }
 
@@ -327,6 +339,7 @@ function badgeDashboard(estado) {
 
 function renderLog(logs) {
   var cont = document.getElementById("log-contenedor");
+  if (!cont) return;
   if (!logs.length) {
     cont.innerHTML = "<div style='padding:16px;color:#aaa;font-size:12px;text-align:center'>Sin registros</div>";
     return;
@@ -544,7 +557,7 @@ function renderTabla() {
     if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
     encontrados++;
-    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH");
+    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.aplicaRetencion;
     var checked  = seleccionados.indexOf(f.id) !== -1 ? "checked" : "";
     var disabled = !puedeSel ? "disabled" : "";
     var montoHtml = f.esUSD
@@ -603,11 +616,10 @@ function actualizarStats() {
     if (facturas[i].estado === "PROCESADO")      procesado++;
     if (facturas[i].estado === "RECHAZADO")      rechazado++;
   }
-  document.getElementById("stat-total").textContent     = facturas.length;
-  document.getElementById("stat-sinauth").textContent   = sinauth;
-  document.getElementById("stat-pendiente").textContent = pendiente;
-  document.getElementById("stat-procesado").textContent = procesado;
-  document.getElementById("stat-rechazado").textContent = rechazado;
+  var elTotal = document.getElementById("stat-total");
+  var elPendiente = document.getElementById("stat-pendiente");
+  if (elTotal) elTotal.textContent = facturas.length;
+  if (elPendiente) elPendiente.textContent = pendiente;
 }
 
 function toggleSeleccion(id, checkbox) {
