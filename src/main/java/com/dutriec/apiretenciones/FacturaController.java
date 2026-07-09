@@ -78,7 +78,21 @@ public class FacturaController {
                 double retencion     = Math.round(montoImpuesto * 0.30);
 
                 String ruc         = proveedor != null ? String.valueOf(proveedor.get("ruc"))         : factura.getRuc();
-                String razonSocial = (proveedor != null && proveedor.get("razon_social") != null) ? proveedor.get("razon_social").toString() : (factura.getRazonSocial() != null ? factura.getRazonSocial() : "");
+                // FIX: usar primer_nombre como fallback cuando razon_social está vacío
+                // (ej: FRANCISCO DANIEL solo tiene primer_nombre, no razon_social)
+                String razonSocial = "";
+                if (proveedor != null) {
+                    Object rs = proveedor.get("razon_social");
+                    Object pn = proveedor.get("primer_nombre");
+                    if (rs != null && !rs.toString().trim().isEmpty()) {
+                        razonSocial = rs.toString().trim();
+                    } else if (pn != null && !pn.toString().trim().isEmpty()) {
+                        razonSocial = pn.toString().trim();
+                    }
+                }
+                if (razonSocial.isEmpty()) {
+                    razonSocial = factura.getRazonSocial() != null ? factura.getRazonSocial() : "Sin nombre";
+                }
                 String correo      = proveedor != null && proveedor.get("mail")      != null ? String.valueOf(proveedor.get("mail"))      : null;
                 String telefono    = proveedor != null && proveedor.get("telefonos") != null ? String.valueOf(proveedor.get("telefonos")) : null;
                 String direccion   = proveedor != null && proveedor.get("direccion") != null ? String.valueOf(proveedor.get("direccion")) : null;
@@ -90,9 +104,9 @@ public class FacturaController {
                 mariaDb.update(
                     "INSERT INTO retenciones_enviadas " +
                     "(id_factura_orig, nro_comprobante, ruc_proveedor, razon_social, " +
-                    "monto, retencion, moneda, estado, num_timbrado, " +
+                    "monto, retencion, moneda, factor_cambio, estado, num_timbrado, timbrado_proveedor, " +
                     "correo_proveedor, telefono_proveedor, direccion_proveedor, fecha_envio) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, NOW())",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, NOW())",
                     id,
                     factura.getFacturaFisica(),
                     ruc,
@@ -100,7 +114,10 @@ public class FacturaController {
                     montoGravado,
                     retencion,
                     factura.getMoneda() != null ? factura.getMoneda() : "GS",
+                    factura.getFactorCambio() != null && factura.getFactorCambio() > 0
+                        ? factura.getFactorCambio() : null,
                     timbrado,
+                    factura.getTimbrado() != null ? factura.getTimbrado().trim() : "",
                     correo,
                     telefono,
                     direccion
@@ -129,7 +146,7 @@ public class FacturaController {
     private Map<String, Object> obtenerDatosProveedor(Long idFactura) {
         try {
             List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
-                "SELECT p.razon_social, p.ruc, p.mail, p.telefonos, p.direccion " +
+                "SELECT p.razon_social, p.primer_nombre, p.ruc, p.mail, p.telefonos, p.direccion " +
                 "FROM facturas_recibidas fr " +
                 "JOIN personas p ON fr.proveedor = p.persona " +
                 "WHERE fr.factura = ?", idFactura

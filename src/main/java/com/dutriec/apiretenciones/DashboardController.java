@@ -13,12 +13,63 @@ import java.util.*;
 public class DashboardController {
 
     private final JdbcTemplate mariaDb;
+    private final JdbcTemplate sqlAnywhere;
     private final RetencionRepository retencionRepository;
 
     public DashboardController(@Qualifier("mariadbJdbcTemplate") JdbcTemplate mariaDb,
+            @Qualifier("sqlAnywhereJdbcTemplate") JdbcTemplate sqlAnywhere,
             RetencionRepository retencionRepository) {
                 this.mariaDb = mariaDb;
+                this.sqlAnywhere = sqlAnywhere;
                 this.retencionRepository = retencionRepository;
+    }
+
+    // =========================================================================
+    // GET /retenciones/migrar-timbrados
+    // One-time: lee el timbrado del proveedor desde SQL Anywhere para los
+    // registros existentes en MariaDB que no lo tienen, y lo actualiza.
+    // No modifica nada en SQL Anywhere — solo LEE de ahí y ESCRIBE en MariaDB.
+    // =========================================================================
+    @GetMapping("/migrar-timbrados")
+    public ResponseEntity<?> migrarTimbrados() {
+        List<Map<String, Object>> sinTimbrado = mariaDb.queryForList(
+            "SELECT id, id_factura_orig FROM retenciones_enviadas " +
+            "WHERE timbrado_proveedor IS NULL " +
+            "   OR timbrado_proveedor = '' " +
+            "   OR timbrado_proveedor NOT REGEXP '^[0-9]{8}$'"
+        );
+
+        int actualizados = 0;
+        List<String> errores = new ArrayList<>();
+
+        for (Map<String, Object> reg : sinTimbrado) {
+            Long idFactura = ((Number) reg.get("id_factura_orig")).longValue();
+            Long idRet = ((Number) reg.get("id")).longValue();
+            try {
+                List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
+                    "SELECT fr.timbrado FROM facturas_recibidas fr WHERE fr.factura = ?",
+                    idFactura
+                );
+                if (!resultado.isEmpty() && resultado.get(0).get("timbrado") != null) {
+                    String timbrado = String.valueOf(resultado.get(0).get("timbrado")).trim();
+                    if (!timbrado.isEmpty()) {
+                        mariaDb.update(
+                            "UPDATE retenciones_enviadas SET timbrado_proveedor = ? WHERE id = ?",
+                            timbrado, idRet
+                        );
+                        actualizados++;
+                    }
+                }
+            } catch (Exception e) {
+                errores.add("Factura " + idFactura + ": " + e.getMessage());
+            }
+        }
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("total_sin_timbrado", sinTimbrado.size());
+        resp.put("actualizados", actualizados);
+        if (!errores.isEmpty()) resp.put("errores", errores);
+        return ResponseEntity.ok(resp);
     }
 
     @GetMapping("/dashboard")
@@ -102,12 +153,14 @@ public class DashboardController {
                 "  razon_social      AS razonSocial, " +
                 "  nro_comprobante   AS nroFactura, " +
                 "  num_timbrado      AS numTimbrado, " +
+                "  timbrado_proveedor AS timbradoProveedor, " +
                 "  correo_proveedor    AS correoProveedor, " +
                 "  telefono_proveedor  AS telefonoProveedor, " +
                 "  direccion_proveedor AS direccionProveedor, " +
                 "  retencion         AS montoRetencion, " +
                 "  monto             AS baseImponible, " +
                 "  moneda, " +
+                "  factor_cambio     AS tipoCambio, " +
                 "  estado            AS estadoSifen, " +
                 "  cdc               AS cdcProveedor, " +
                 "  motivo_rechazo    AS respuestaSifen, " +
