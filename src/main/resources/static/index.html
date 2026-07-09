@@ -76,15 +76,15 @@
             <p class="tarjeta-valor" id="stat-total">0</p>
           </div>
           <div class="tarjeta">
-            <p class="tarjeta-label">Pendiente de envío</p>
+            <p class="tarjeta-label">Pendiente de aprobación</p>
             <p class="tarjeta-valor color-amarillo" id="stat-pendiente">0</p>
           </div>
         </div>
 
         <!-- PESTAÑAS ESTADO -->
         <div class="pestanas">
-          <button class="pestana activa" onclick="cambiarPestana('todas', this)">Todas</button>
-          <button class="pestana" onclick="cambiarPestana('PENDIENTE', this)">Pendiente de envío</button>
+          <button class="pestana activa" onclick="cambiarPestana('todas', this)">Pendientes de aprobación</button>
+          <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Facturas aprobadas</button>
         </div>
 
         <!-- FILTROS Y ACCIONES -->
@@ -184,7 +184,6 @@
           <div class="filtros">
             <input type="text" id="dash-filtro-ruc" placeholder="Buscar RUC o Nº doc..." oninput="filtrarDashboard()">
             <button class="btn-azul" onclick="cargarDashboard()">&#8635; Actualizar</button>
-            <button class="btn-azul" onclick="descargarTxt()">&#11015; Descargar TXT</button>
           </div>
           <div class="acciones-sel">
             <span id="dash-info-sel">0 facturas seleccionadas</span>
@@ -360,7 +359,7 @@
     </div>
   </div>
 
-  <script src="js/retenciones.js?v=8"></script>
+  <script src="js/retenciones.js?v=9"></script>
 </body>
 
 </html>

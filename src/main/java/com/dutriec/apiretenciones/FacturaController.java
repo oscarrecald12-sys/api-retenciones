@@ -78,7 +78,7 @@ public class FacturaController {
                 double retencion     = Math.round(montoImpuesto * 0.30);
 
                 String ruc         = proveedor != null ? String.valueOf(proveedor.get("ruc"))         : factura.getRuc();
-                String razonSocial = proveedor != null ? String.valueOf(proveedor.get("razon_social")) : "";
+                String razonSocial = (proveedor != null && proveedor.get("razon_social") != null) ? proveedor.get("razon_social").toString() : (factura.getRazonSocial() != null ? factura.getRazonSocial() : "");
                 String correo      = proveedor != null && proveedor.get("mail")      != null ? String.valueOf(proveedor.get("mail"))      : null;
                 String telefono    = proveedor != null && proveedor.get("telefonos") != null ? String.valueOf(proveedor.get("telefonos")) : null;
                 String direccion   = proveedor != null && proveedor.get("direccion") != null ? String.valueOf(proveedor.get("direccion")) : null;
