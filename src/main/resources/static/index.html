@@ -82,9 +82,12 @@
         </div>
 
         <!-- PESTAÑAS ESTADO -->
-        <div class="pestanas">
-          <button class="pestana activa" onclick="cambiarPestana('todas', this)">Pendientes de aprobación</button>
-          <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Facturas aprobadas</button>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="pestanas">
+            <button class="pestana activa" onclick="cambiarPestana('todas', this)">Pendientes de aprobación</button>
+            <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Facturas aprobadas</button>
+          </div>
+          <button class="btn-azul" onclick="cargarFacturas()" style="height:34px">&#8635; Actualizar</button>
         </div>
 
         <!-- FILTROS Y ACCIONES -->
@@ -359,7 +362,7 @@
     </div>
   </div>
 
-  <script src="js/retenciones.js?v=14"></script>
+  <script src="js/retenciones.js?v=10"></script>
 </body>
 
 </html>
