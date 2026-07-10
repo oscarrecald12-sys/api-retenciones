@@ -154,6 +154,7 @@ public class DashboardController {
                 "  nro_comprobante   AS nroFactura, " +
                 "  num_timbrado      AS numTimbrado, " +
                 "  timbrado_proveedor AS timbradoProveedor, " +
+                "  fecha_factura     AS fechaFactura, " +
                 "  correo_proveedor    AS correoProveedor, " +
                 "  telefono_proveedor  AS telefonoProveedor, " +
                 "  direccion_proveedor AS direccionProveedor, " +

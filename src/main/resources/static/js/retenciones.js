@@ -101,15 +101,23 @@ function cambiarVista(vista, elemento) {
 // =============================================
 // CARGA FACTURAS DESDE SQL ANYWHERE
 // =============================================
+// Refresh silencioso: actualiza datos en background sin spinner ni parpadeo.
+// Solo muestra spinner la primera vez (cuando no hay datos).
+var primeraVezFacturas = true;
+var primeraVezDash = true;
+
 function cargarFacturas() {
-  document.getElementById("cuerpo-tabla").innerHTML =
-    "<tr><td colspan='10' style='text-align:center;padding:2.5rem'>" +
-    "<div class='spinner-carga'></div>" +
-    "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando facturas...</div>" +
-    "</td></tr>";
+  if (primeraVezFacturas) {
+    document.getElementById("cuerpo-tabla").innerHTML =
+      "<tr><td colspan='10' style='text-align:center;padding:2.5rem'>" +
+      "<div class='spinner-carga'></div>" +
+      "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando facturas...</div>" +
+      "</td></tr>";
+  }
   fetch(URL_API + "/retenciones/pendientes")
     .then(function(r) { if (!r.ok) throw new Error("Error al conectar con la API"); return r.json(); })
     .then(function(datos) {
+      primeraVezFacturas = false;
       var totalesPorCompra = {};
       datos.forEach(function(f) {
         if (f.compra) {
@@ -131,6 +139,8 @@ function cargarFacturas() {
         }
         var totalCompra = f.compra ? (totalesPorCompra[f.compra] || 0) : 0;
         var aplicaRetencion = totalCompra >= MONTO_MINIMO;
+        // Preservar estado local si ya fue procesado en esta sesión
+        var existente = facturas.find(function(x) { return x.id === f.factura; });
         return {
           id: f.factura, nro: f.facturaFisica || "—",
           proveedor: f.razonSocial || "Sin nombre", ruc: f.ruc || "",
@@ -139,23 +149,22 @@ function cargarFacturas() {
           tasa: calcularTasa(f), retGS: retGS, retUSD: retUSD, esUSD: esUSD,
           timbrado: f.timbrado || "", fecha: f.fecha || "",
           totalCompra: totalCompra, aplicaRetencion: aplicaRetencion,
-          estado: "PENDIENTE", motivo: ""
+          estado: (existente && existente.estado === "PROCESADO") ? "PROCESADO" : "PENDIENTE",
+          motivo: ""
         };
       });
       renderTabla();
     })
     .catch(function(error) {
-      if (facturas.length > 0) {
-        mostrarMensaje("Error al cargar facturas: " + error.message, "error");
-        document.getElementById("cuerpo-tabla").innerHTML =
-          "<tr><td colspan='9' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo conectar con la API.</td></tr>";
-      } else {
+      if (primeraVezFacturas) {
         document.getElementById("cuerpo-tabla").innerHTML =
           "<tr><td colspan='9' style='text-align:center;padding:2rem;color:#aaa'>" +
           "<div class='spinner-carga'></div>" +
           "<div style='margin-top:10px;font-size:13px'>Conectando...</div>" +
           "</td></tr>";
         setTimeout(function() { cargarFacturas(); }, 3000);
+      } else {
+        mostrarMensaje("No se pudo actualizar las facturas. Se muestra la última versión.", "warning");
       }
     });
 }
@@ -164,28 +173,31 @@ function cargarFacturas() {
 // CARGA DASHBOARD DESDE MARIADB
 // =============================================
 function cargarDashboard() {
-  document.getElementById("cuerpo-dashboard").innerHTML =
-    "<tr><td colspan='11' style='text-align:center;padding:2.5rem'>" +
-    "<div class='spinner-carga'></div>" +
-    "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando datos...</div>" +
-    "</td></tr>";
+  if (primeraVezDash) {
+    document.getElementById("cuerpo-dashboard").innerHTML =
+      "<tr><td colspan='11' style='text-align:center;padding:2.5rem'>" +
+      "<div class='spinner-carga'></div>" +
+      "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando datos...</div>" +
+      "</td></tr>";
+  }
   fetch(URL_API + "/retenciones/dashboard")
     .then(function(r) { if (!r.ok) throw new Error("Error al cargar dashboard"); return r.json(); })
     .then(function(data) {
+      primeraVezDash = false;
       document.getElementById("dash-enviadas").textContent   = data.resumen.enviadas   || 0;
       document.getElementById("dash-pendientes").textContent = data.resumen.pendientes || 0;
       document.getElementById("dash-errores").textContent    = data.resumen.errores    || 0;
-      //TODO. quitar: no hace falta
-      //- document.getElementById("dash-fisicas").textContent    = data.resumen.fisicas    || 0;
-      //- document.getElementById("dash-monto").textContent      = "Gs. " + formatearNumero(data.resumen.montoTotal || 0);
       retencionesDB = data.retenciones || [];
-      //AQUI
       renderDashboard();
       renderLog(data.logs || []);
     })
     .catch(function(error) {
-      document.getElementById("cuerpo-dashboard").innerHTML =
-        "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo cargar el dashboard: " + error.message + "</td></tr>";
+      if (!primeraVezDash) {
+        mostrarMensaje("No se pudo actualizar el dashboard.", "warning");
+      } else {
+        document.getElementById("cuerpo-dashboard").innerHTML =
+          "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo cargar el dashboard: " + error.message + "</td></tr>";
+      }
     });
 }
 
@@ -492,55 +504,70 @@ function formatearUSD(n) { return (n || 0).toLocaleString("es-PY", { minimumFrac
 // APROBAR Y ENVIAR
 // =============================================
 function aprobarYEnviar() {
-  if (seleccionados.length === 0) { mostrarMensaje("Selecciona al menos una factura.", "error"); return; }
+  if (seleccionados.length === 0) { mostrarMensaje("Seleccioná al menos una factura para aprobar.", "warning"); return; }
   var sinMinimo = seleccionados.filter(function(id) {
     var f = facturas.find(function(x) { return x.id === id; });
     return f && !f.aplicaRetencion;
   });
-  if (sinMinimo.length > 0) { mostrarMensaje(sinMinimo.length + " factura/s no alcanzan el minimo", "error"); return; }
+  if (sinMinimo.length > 0) {
+    mostrarMensaje(sinMinimo.length + " factura/s no alcanzan el monto mínimo para retención.", "warning");
+    return;
+  }
 
   var cant = seleccionados.length;
-  var btn = document.getElementById("btn-aprobar");
-  btn.disabled = true; btn.textContent = "Enviando...";
+  var nombres = seleccionados.slice(0, 3).map(function(id) {
+    var f = facturas.find(function(x) { return x.id === id; });
+    return f ? f.proveedor : "—";
+  }).join(", ") + (cant > 3 ? " y " + (cant - 3) + " más" : "");
 
-  // FIX: llamar al backend para guardar en MariaDB.
-  // Antes solo se simulaba con setTimeout sin hacer ninguna llamada real,
-  // por eso las facturas nunca aparecían en "Control de envíos".
-  fetch(URL_API + "/retenciones/enviar-lote", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(seleccionados.map(Number))
-  })
-  .then(function(r) {
-    if (!r.ok) throw new Error("Error al enviar al servidor");
-    return r.json();
-  })
-  .then(function(resultados) {
-    var exitosos = resultados.filter(function(r) { return r.estado !== "ERROR"; });
-    var errores = resultados.filter(function(r) { return r.estado === "ERROR"; });
+  confirmar(
+    "Aprobar " + cant + " retención" + (cant > 1 ? "es" : ""),
+    "Se enviarán al sistema: <strong>" + nombres + "</strong>.<br/>Esta acción no se puede deshacer.",
+    "Aprobar " + cant, "Cancelar"
+  ).then(function(ok) {
+    if (!ok) return;
 
-    // Actualizar estado local de las facturas exitosas
-    exitosos.forEach(function(res) {
-      var f = facturas.find(function(x) { return x.id === res.idFactura; });
-      if (f) f.estado = "PROCESADO";
+    var btn = document.getElementById("btn-aprobar");
+    btn.disabled = true;
+    btn.innerHTML = "<span class='spinner-btn'></span> Procesando...";
+
+    fetch(URL_API + "/retenciones/enviar-lote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(seleccionados.map(Number))
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error("Error al enviar al servidor");
+      return r.json();
+    })
+    .then(function(resultados) {
+      var exitosos = resultados.filter(function(r) { return r.estado !== "ERROR"; });
+      var errores = resultados.filter(function(r) { return r.estado === "ERROR"; });
+
+      exitosos.forEach(function(res) {
+        var f = facturas.find(function(x) { return x.id === res.idFactura; });
+        if (f) f.estado = "PROCESADO";
+      });
+
+      seleccionados = [];
+      renderTabla();
+      actualizarStats();
+
+      if (errores.length > 0 && exitosos.length > 0) {
+        mostrarMensaje(exitosos.length + " aprobada/s correctamente. " + errores.length + " con error.", "warning");
+        errores.forEach(function(e) { mostrarMensaje(e.motivo, "error"); });
+      } else if (errores.length > 0) {
+        errores.forEach(function(e) { mostrarMensaje(e.motivo, "error"); });
+      } else {
+        mostrarMensaje(cant + " retención" + (cant > 1 ? "es" : "") + " aprobada" + (cant > 1 ? "s" : "") + " correctamente", "ok");
+      }
+    })
+    .catch(function(e) {
+      mostrarMensaje("Error de conexión: " + e.message, "error");
+    })
+    .finally(function() {
+      btn.disabled = false; btn.innerHTML = "✓ Aprobar Facturas";
     });
-
-    seleccionados = [];
-    renderTabla();
-    actualizarStats();
-
-    if (errores.length > 0) {
-      console.warn("Facturas con error:", errores);
-      mostrarMensaje(exitosos.length + " enviada/s, " + errores.length + " con error: " + errores[0].motivo, "error");
-    } else {
-      mostrarMensaje(cant + " retención/es aprobadas y guardadas ✓", "ok");
-    }
-  })
-  .catch(function(e) {
-    mostrarMensaje("Error: " + e.message, "error");
-  })
-  .finally(function() {
-    btn.disabled = false; btn.textContent = "✓ Aprobar Facturas";
   });
 }
 
@@ -729,11 +756,96 @@ function cambiarPestana(nombre, elemento) {
   elemento.classList.add("activa");
   renderTabla();
 }
+// =============================================
+// SISTEMA DE NOTIFICACIONES (TOASTS)
+// =============================================
+var toastContador = 0;
+
+/**
+ * Muestra un toast profesional con icono y auto-dismiss.
+ * Tipos: "ok", "error", "info", "warning"
+ */
 function mostrarMensaje(texto, tipo) {
-  var el = document.getElementById("mensaje");
-  el.textContent = texto;
-  el.className = "mensaje " + tipo;
-  setTimeout(function() { el.className = "mensaje oculto"; }, 4000);
+  tipo = tipo || "info";
+  var iconos = { ok: "✓", error: "✕", info: "ℹ", warning: "⚠" };
+  var colores = {
+    ok:      { bg: "#ecfdf5", border: "#10b981", text: "#065f46", icon: "#10b981" },
+    error:   { bg: "#fef2f2", border: "#ef4444", text: "#991b1b", icon: "#ef4444" },
+    info:    { bg: "#eff6ff", border: "#3b82f6", text: "#1e40af", icon: "#3b82f6" },
+    warning: { bg: "#fffbeb", border: "#f59e0b", text: "#92400e", icon: "#f59e0b" }
+  };
+  var c = colores[tipo] || colores.info;
+  var id = "toast-" + (++toastContador);
+
+  // Crear contenedor si no existe
+  var contenedor = document.getElementById("toast-container");
+  if (!contenedor) {
+    contenedor = document.createElement("div");
+    contenedor.id = "toast-container";
+    contenedor.style.cssText = "position:fixed;top:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;max-width:420px;";
+    document.body.appendChild(contenedor);
+  }
+
+  var toast = document.createElement("div");
+  toast.id = id;
+  toast.style.cssText = "display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-radius:8px;" +
+    "background:" + c.bg + ";border-left:4px solid " + c.border + ";color:" + c.text + ";" +
+    "font-size:13px;line-height:1.4;box-shadow:0 4px 12px rgba(0,0,0,0.15);" +
+    "transform:translateX(120%);transition:transform 0.3s ease,opacity 0.3s ease;opacity:0;cursor:pointer;";
+  toast.innerHTML =
+    "<span style='font-size:18px;color:" + c.icon + ";flex-shrink:0;line-height:1'>" + iconos[tipo] + "</span>" +
+    "<span style='flex:1'>" + texto + "</span>" +
+    "<span style='color:#999;font-size:16px;margin-left:8px;cursor:pointer' onclick='cerrarToast(\"" + id + "\")'>×</span>";
+  toast.onclick = function() { cerrarToast(id); };
+
+  contenedor.appendChild(toast);
+  // Animate in
+  requestAnimationFrame(function() {
+    toast.style.transform = "translateX(0)";
+    toast.style.opacity = "1";
+  });
+
+  // Auto-dismiss
+  var duracion = tipo === "error" ? 8000 : 4000;
+  setTimeout(function() { cerrarToast(id); }, duracion);
+}
+
+function cerrarToast(id) {
+  var toast = document.getElementById(id);
+  if (!toast) return;
+  toast.style.transform = "translateX(120%)";
+  toast.style.opacity = "0";
+  setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+}
+
+/**
+ * Muestra un diálogo de confirmación profesional (reemplaza confirm() nativo).
+ * Devuelve una Promise que resuelve a true/false.
+ */
+function confirmar(titulo, mensaje, textoSi, textoNo) {
+  textoSi = textoSi || "Confirmar";
+  textoNo = textoNo || "Cancelar";
+  return new Promise(function(resolve) {
+    var overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);" +
+      "display:flex;align-items:center;justify-content:center;z-index:10001;animation:fadeIn .2s ease;";
+    overlay.innerHTML =
+      "<div style='background:#fff;border-radius:12px;padding:28px 32px;max-width:400px;width:90%;" +
+      "box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideUp .25s ease'>" +
+        "<h3 style='margin:0 0 8px;font-size:16px;color:#1a1a1a'>" + titulo + "</h3>" +
+        "<p style='margin:0 0 24px;color:#666;font-size:13px;line-height:1.5'>" + mensaje + "</p>" +
+        "<div style='display:flex;gap:10px;justify-content:flex-end'>" +
+          "<button id='confirm-no' style='padding:8px 20px;border:1px solid #ddd;background:#fff;" +
+            "border-radius:6px;cursor:pointer;font-size:13px;color:#555'>" + textoNo + "</button>" +
+          "<button id='confirm-si' style='padding:8px 20px;border:none;background:#2d7a0e;color:#fff;" +
+            "border-radius:6px;cursor:pointer;font-size:13px;font-weight:600'>" + textoSi + "</button>" +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(overlay);
+    overlay.querySelector("#confirm-si").onclick = function() { document.body.removeChild(overlay); resolve(true); };
+    overlay.querySelector("#confirm-no").onclick = function() { document.body.removeChild(overlay); resolve(false); };
+    overlay.querySelector("#confirm-si").focus();
+  });
 }
 
 /**
@@ -795,6 +907,26 @@ var CONCEPTOS_RENTA = {
   "CONTRIBUYENTE":    "RENTA_EMPRESARIAL_REGISTRADO.1",
   "NO_CONTRIBUYENTE": "RENTA_EMPRESARIAL.1",
   "NO_RESIDENTE":     "RENTA_NO_RESIDENTE.10"
+};
+
+/**
+ * CONFIGURACIÓN DE RETENCIÓN — ⚠️ CONFIRMAR CON EL CONTADOR ⚠️
+ *
+ * El sistema calcula la retención como impuesto × 30% (SOLO IVA).
+ * Por coherencia, retenerRenta debe ser false: si fuera true, Tesaka
+ * emitiría un comprobante que ADEMÁS retiene renta sobre la base
+ * (un monto mucho mayor al registrado en este sistema).
+ *
+ * Si DUTRIEC también debe retener renta, cambiar retenerRenta a true,
+ * ajustar rentaPorcentaje al valor que indique el contador, y actualizar
+ * el cálculo en FacturaController.enviarLote() para incluirla.
+ */
+var RETENCION_CONFIG = {
+  retenerIva: true,
+  ivaPorcentaje10: 30,
+  ivaPorcentaje5: 30,
+  retenerRenta: false,
+  rentaPorcentaje: 0
 };
 
 /**
@@ -926,6 +1058,19 @@ function descargarTxt() {
       var condicion = r.condicionCompra === "CREDITO" ? "CREDITO" : "CONTADO";
       var cuotas = condicion === "CREDITO" ? (Number(r.cuotas) || 1) : 0;
 
+      // FIX Bug precioUnitario: la especificación exige que para importes
+      // gravados el precio sea IVA INCLUIDO (Tesaka calcula base = precio/11).
+      // baseImponible viene SIN IVA de MariaDB, así que derivamos el impuesto
+      // desde el monto de retención: impuesto = retencion / (ivaPct/100).
+      var precioIvaIncluido = Number(r.baseImponible) || 0;
+      if (tasaDetalle === "10" || tasaDetalle === "5") {
+        var pctAplicado = tasaDetalle === "10"
+          ? RETENCION_CONFIG.ivaPorcentaje10 : RETENCION_CONFIG.ivaPorcentaje5;
+        var impuestoDerivado = pctAplicado > 0
+          ? (Number(r.montoRetencion) || 0) / (pctAplicado / 100) : 0;
+        precioIvaIncluido = Math.round((precioIvaIncluido + impuestoDerivado) * 100) / 100;
+      }
+
       // Estructuramos el objeto respetando el formato de Importación de Tesaka
       var objetoRetencion = {
         "atributos": {
@@ -942,7 +1087,7 @@ function descargarTxt() {
           "tipoIdentificacion": esContribuyente ? "" : (r.tipoIdentificacion || "CEDULA"),
           "identificacion":     esContribuyente ? "" : (r.identificacion || ""),
           "nombre": r.razonSocial || "---",
-          "domicilio": esContribuyente ? (r.domicilioProveedor || "Domicilio Fiscal") : "",
+          "domicilio": esContribuyente ? (r.direccionProveedor || "Domicilio Fiscal") : "",
           "direccion":         esContribuyente ? "" : (r.direccionProveedor || ""),
           "correoElectronico": esContribuyente ? "" : (r.correoProveedor || ""),
           "telefono":          esContribuyente ? "" : (r.telefonoProveedor || ""),
@@ -955,7 +1100,10 @@ function descargarTxt() {
           "cuotas": cuotas,
           "tipoComprobante": 1, // 1 = Factura estándar
           "numeroComprobanteVenta": nroComprobante,
-          "fecha": r.fechaEnvio ? String(r.fechaEnvio).substring(0, 10) : getFechaLocal(),
+          // FIX Bug fecha: usar la fecha de la FACTURA del proveedor
+          // (fechaFactura, nueva columna). fechaEnvio solo como fallback.
+          "fecha": r.fechaFactura ? String(r.fechaFactura).substring(0, 10)
+                 : (r.fechaEnvio ? String(r.fechaEnvio).substring(0, 10) : getFechaLocal()),
           // FIX: el campo correcto es timbradoProveedor (timbrado de la factura
           // del proveedor desde SQL Anywhere). numTimbrado era el timbrado de DUTRIEC
           // que venía como "PENDIENTE_TIMBRADO" y Tesaka rechazaba.
@@ -965,26 +1113,29 @@ function descargarTxt() {
           {
             "cantidad": 1,
             "tasaAplica": tasaDetalle,
-            "precioUnitario": Number(r.baseImponible) || 0,
+            "precioUnitario": precioIvaIncluido,
             "descripcion": "Retención correspondiente a Comprobante de Venta Nro: " + (nroComprobante || "—")
           }
         ],
         "retencion": {
           "fecha": getFechaLocal(),
           "moneda": (r.moneda === "USD" || r.moneda === "DL") ? "USD" : "PYG",
-          "retencionRenta": true,
-          // Concepto según situación: para CONTRIBUYENTE Tesaka rechazó
-          // COMERCIAL_INDUSTRIAL_SERVICIOS.1 (ese código es de no contribuyentes)
-          "conceptoRenta": CONCEPTOS_RENTA[situacion],
-          "retencionIva": true,
-          "conceptoIva": "IVA.1",
-          "rentaPorcentaje": 10, // TODO: confirmar % con el contador según designación DNIT
+          // FIX Bug renta: el sistema calcula SOLO retención de IVA (impuesto × 30%).
+          // Antes se enviaba retencionRenta: true + rentaPorcentaje: 10, lo que hacía
+          // que Tesaka calcule ADEMÁS una retención de renta del 10% sobre la base —
+          // un monto mucho mayor al registrado en MariaDB.
+          // Configuración centralizada en RETENCION_CONFIG (arriba del archivo).
+          "retencionRenta": RETENCION_CONFIG.retenerRenta,
+          "conceptoRenta": RETENCION_CONFIG.retenerRenta ? CONCEPTOS_RENTA[situacion] : "",
+          "retencionIva": RETENCION_CONFIG.retenerIva,
+          "conceptoIva": RETENCION_CONFIG.retenerIva ? "IVA.1" : "",
+          "rentaPorcentaje": RETENCION_CONFIG.rentaPorcentaje,
           "rentaCabezasBase": 0,
           "rentaCabezasCantidad": 0,
           "rentaToneladasBase": 0,
           "rentaToneladasCantidad": 0,
-          "ivaPorcentaje5": r.ivaPorcentaje5 || 0,
-          "ivaPorcentaje10": 30 // Valor por defecto para DUTRIEC en retenciones IVA (30%)
+          "ivaPorcentaje5": tasaDetalle === "5" ? RETENCION_CONFIG.ivaPorcentaje5 : 0,
+          "ivaPorcentaje10": tasaDetalle === "10" ? RETENCION_CONFIG.ivaPorcentaje10 : 0
         }
       };
 
@@ -1007,12 +1158,18 @@ function descargarTxt() {
     }
   });
 
-  // Si hubo filas inválidas, informar al usuario con el motivo exacto
+  // Si hubo filas inválidas, informar al usuario con toasts
   if (erroresValidacion.length > 0) {
     console.warn("Retenciones con errores (excluidas del archivo):");
     erroresValidacion.forEach(function(e) { console.warn("  " + e); });
-    mostrarMensaje(erroresValidacion.length + " retención/es con errores (ver consola): " +
-                   erroresValidacion[0], "error");
+    // Mostrar cada error como toast individual (máx 5 para no saturar)
+    var maxToasts = Math.min(erroresValidacion.length, 5);
+    for (var i = 0; i < maxToasts; i++) {
+      mostrarMensaje(erroresValidacion[i], "error");
+    }
+    if (erroresValidacion.length > 5) {
+      mostrarMensaje("... y " + (erroresValidacion.length - 5) + " errores más (ver consola F12)", "warning");
+    }
   }
 
   if (arregloJson.length === 0) {
@@ -1192,7 +1349,7 @@ function guardarRespuestaRetencion() {
   var comentario = document.getElementById("reg-comentario").value.trim();
 
   if (!nroComprobante) {
-    alert("Error: No se ha especificado el Número de Comprobante.");
+    mostrarMensaje("Especificá el Número de Comprobante.", "warning");
     return;
   }
 
@@ -1221,7 +1378,7 @@ function guardarRespuestaRetencion() {
     });
   })
   .then(function(data) {
-    alert("Respuesta procesada: " + data.mensaje);
+    mostrarMensaje("Respuesta guardada correctamente", "ok");
     cerrarRegistrarRespuesta(); // Cierra tu modal actual
     
     // Si tienes una función para recargar la grilla/dashboard, invócala aquí:
@@ -1233,7 +1390,7 @@ function guardarRespuestaRetencion() {
   })
   .catch(function(err) {
     console.error(err);
-    alert("Hubo un problema al guardar la respuesta: " + err.message);
+    mostrarMensaje("Error al guardar respuesta: " + err.message, "error");
   });
 }
 }*/
@@ -1295,4 +1452,7 @@ function mostrarCheckboxesEnDash() {
   return pestanaDashActual === "todas" || pestanaDashActual === "PENDIENTE";
 }
 
+// Auto-refresh silencioso: facturas cada 60s, dashboard cada 120s.
+// El usuario no ve spinner ni parpadeo — solo se actualizan los datos.
 setInterval(function() { if (vistaActual === "facturas") cargarFacturas(); }, 60000);
+setInterval(function() { if (vistaActual === "dashboard") cargarDashboard(); }, 120000);

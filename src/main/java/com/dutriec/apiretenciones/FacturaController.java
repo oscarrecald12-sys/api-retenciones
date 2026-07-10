@@ -55,6 +55,22 @@ public class FacturaController {
                     continue;
                 }
 
+                // FIX Bug duplicados: evitar aprobar dos veces la misma factura.
+                // Antes se podía aprobar la misma factura repetidamente y aparecía
+                // duplicada en el dashboard (ej: CLARISE dos veces).
+                Integer yaExiste = mariaDb.queryForObject(
+                    "SELECT COUNT(*) FROM retenciones_enviadas " +
+                    "WHERE id_factura_orig = ? AND estado NOT IN ('RECHAZADO','ERROR')",
+                    Integer.class, id
+                );
+                if (yaExiste != null && yaExiste > 0) {
+                    r.setEstado("ERROR");
+                    r.setMotivo("La factura " + factura.getFacturaFisica()
+                            + " ya fue aprobada anteriormente (duplicado evitado)");
+                    resultados.add(r);
+                    continue;
+                }
+
                 // Guard: si factura_fisica sigue null aquí, loguear y continuar
                 if (factura.getFacturaFisica() == null || factura.getFacturaFisica().isBlank()) {
                     System.err.println("[enviar-lote] factura_fisica null para id=" + id
@@ -105,8 +121,8 @@ public class FacturaController {
                     "INSERT INTO retenciones_enviadas " +
                     "(id_factura_orig, nro_comprobante, ruc_proveedor, razon_social, " +
                     "monto, retencion, moneda, factor_cambio, estado, num_timbrado, timbrado_proveedor, " +
-                    "correo_proveedor, telefono_proveedor, direccion_proveedor, fecha_envio) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, NOW())",
+                    "fecha_factura, correo_proveedor, telefono_proveedor, direccion_proveedor, fecha_envio) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, NOW())",
                     id,
                     factura.getFacturaFisica(),
                     ruc,
@@ -118,6 +134,10 @@ public class FacturaController {
                         ? factura.getFactorCambio() : null,
                     timbrado,
                     factura.getTimbrado() != null ? factura.getTimbrado().trim() : "",
+                    // FIX Bug fecha: guardar la fecha de la FACTURA del proveedor
+                    // para usarla en transaccion.fecha del TXT de Tesaka
+                    factura.getFecha() != null && factura.getFecha().length() >= 10
+                        ? factura.getFecha().substring(0, 10) : null,
                     correo,
                     telefono,
                     direccion
