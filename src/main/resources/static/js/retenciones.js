@@ -2,7 +2,10 @@
 // CONFIGURACION
 // =============================================
 var URL_API = "http://127.0.0.1:8080";
-var MONTO_MINIMO = 50000;
+// Todas las facturas aplican para retención — no hay filtro de monto mínimo,
+// ya que hay pagos que se retienen sin importar el monto (excepciones fiscales).
+// Si en el futuro se necesita reactivar, cambiar aplicaRetencion en cargarFacturas().
+var MONTO_MINIMO = 0;
 var seleccionados = [];
 var pestanaActual = "todas";
 var facturas = [];
@@ -138,7 +141,8 @@ function cargarFacturas() {
           retGS = Math.round((f.montoImpuesto || 0) * 0.30 + (f.montoImpuesto5 || 0) * 0.30);
         }
         var totalCompra = f.compra ? (totalesPorCompra[f.compra] || 0) : 0;
-        var aplicaRetencion = totalCompra >= MONTO_MINIMO;
+        // Todas las facturas aplican para retención (validación de mínimo desactivada)
+        var aplicaRetencion = true;
         // Preservar estado local si ya fue procesado en esta sesión
         var existente = facturas.find(function(x) { return x.id === f.factura; });
         return {
@@ -146,6 +150,8 @@ function cargarFacturas() {
           proveedor: f.razonSocial || "Sin nombre", ruc: f.ruc || "",
           compra: f.compra || null, moneda: f.moneda || "GS", tipoCambio: tc,
           monto: (f.montoGravado || 0) + (f.montoGravado5 || 0) + (f.montoExento || 0),
+          montoImpuesto: f.montoImpuesto || 0,
+          montoImpuesto5: f.montoImpuesto5 || 0,
           tasa: calcularTasa(f), retGS: retGS, retUSD: retUSD, esUSD: esUSD,
           timbrado: f.timbrado || "", fecha: f.fecha || "",
           totalCompra: totalCompra, aplicaRetencion: aplicaRetencion,
@@ -343,14 +349,26 @@ function renderDashboard() {
     var simbolo = esUSD ? "USD " : "Gs. ";
     var formatMonto = esUSD ? formatearUSD : formatearNumero;
 
+    // Derivar el IVA a partir del monto de retención: retencion = impuesto × 30%
+    // Ratio > 2% indica tasa 10%, ratio menor indica 5%. Sin retención → exento.
+    var base = Number(r.baseImponible) || 0;
+    var ret  = Number(r.montoRetencion) || 0;
+    var iva  = 0;
+    if (ret > 0 && base > 0) {
+      var pctIva = ret / base > 0.02 ? 30 : 30; // 30% para ambos casos
+      iva = ret / (pctIva / 100);
+    }
+    var total = base + iva;
+
     html +=
       "<td style='font-family:monospace;font-size:11px'>" + (r.numDocRet || "—") + "</td>" +
       "<td style='font-size:11px'>" + (r.rucProveedor || "—") + "</td>" +
       "<td><strong style='font-size:12px'>" + (r.razonSocial || "—") + "</strong></td>" +
       "<td style='font-family:monospace;font-size:11px'>" + (r.timbradoProveedor || r.numTimbrado || "—") + "</td>" +
       "<td style='font-family:monospace;font-size:11px'>" + (r.nroFactura || "—") + "</td>" +
-      "<td class='der'>" + simbolo + formatMonto(r.baseImponible) + "</td>" +
-      "<td class='der'><strong>" + simbolo + formatMonto(r.montoRetencion) + "</strong></td>" +
+      "<td class='der'>" + simbolo + formatMonto(total) + "</td>" +
+      "<td class='der' style='color:#666'>" + simbolo + formatMonto(iva) + "</td>" +
+      "<td class='der'><strong>" + simbolo + formatMonto(ret) + "</strong></td>" +
       "<td>" + tipoHtml + "</td>" +
       "<td>" + badgeDashboard(r.estadoSifen) + "</td>" +
       "<td style='font-size:11px'>" + formatearFecha(r.fechaEnvio) + "</td>" +
@@ -505,12 +523,21 @@ function formatearUSD(n) { return (n || 0).toLocaleString("es-PY", { minimumFrac
 // =============================================
 function aprobarYEnviar() {
   if (seleccionados.length === 0) { mostrarMensaje("Seleccioná al menos una factura para aprobar.", "warning"); return; }
-  var sinMinimo = seleccionados.filter(function(id) {
+
+  // Validación: todas deben tener orden de pago asignada
+  var sinOrden = seleccionados.filter(function(id) {
     var f = facturas.find(function(x) { return x.id === id; });
-    return f && !f.aplicaRetencion;
+    return f && !f.compra;
   });
-  if (sinMinimo.length > 0) {
-    mostrarMensaje(sinMinimo.length + " factura/s no alcanzan el monto mínimo para retención.", "warning");
+  if (sinOrden.length > 0) {
+    var nombres = sinOrden.slice(0, 3).map(function(id) {
+      var f = facturas.find(function(x) { return x.id === id; });
+      return f ? f.nro : "—";
+    }).join(", ") + (sinOrden.length > 3 ? " y " + (sinOrden.length - 3) + " más" : "");
+    mostrarMensaje(
+      sinOrden.length + " factura/s sin orden de pago (" + nombres + "). Generá primero la orden de pago en el sistema.",
+      "error"
+    );
     return;
   }
 
@@ -648,6 +675,7 @@ function obtenerMesFactura(fecha) {
 function renderTabla() {
   var buscar = document.getElementById("filtro-buscar").value.toLowerCase();
   var mesFiltro = document.getElementById("filtro-mes").value;
+  var soloConOrden = document.getElementById("filtro-con-orden").checked;
   var tbody = document.getElementById("cuerpo-tabla");
   var html = "", encontrados = 0;
   for (var i = 0; i < facturas.length; i++) {
@@ -655,24 +683,31 @@ function renderTabla() {
     if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
     if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
+    if (soloConOrden && !f.compra) continue;
     encontrados++;
-    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.aplicaRetencion;
+    // Bloquear selección si la factura NO tiene orden de pago asignada
+    var tieneOrdenPago = !!f.compra;
+    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && tieneOrdenPago;
     var checked  = seleccionados.indexOf(f.id) !== -1 ? "checked" : "";
     var disabled = !puedeSel ? "disabled" : "";
+    // Celda de orden de pago con aviso visual cuando no tiene
+    var ordenPagoHtml = tieneOrdenPago
+      ? "<span style='font-family:monospace;font-size:11px'>" + f.compra + "</span>"
+      : "<span style='display:inline-flex;align-items:center;gap:4px;color:#a32d2d;font-size:11px;font-weight:600' " +
+        "title='Esta factura no tiene orden de pago asignada. No se puede procesar la retención hasta que se genere una.'>" +
+        "⚠ Sin orden</span>";
+    // Mostrar el desglose: monto total (IVA incluido), IVA, retención
+    var impuesto = (f.montoImpuesto || 0) + (f.montoImpuesto5 || 0);
+    var montoTotal = f.monto + impuesto; // f.monto = base sin IVA
     var montoHtml = f.esUSD
-      ? "USD " + formatearUSD(f.monto) + "<div style='font-size:10px;color:#888'>TC: " + formatearNumero(f.tipoCambio) + "</div>"
-      : "Gs. " + formatearNumero(f.monto);
+      ? "USD " + formatearUSD(montoTotal) + "<div style='font-size:10px;color:#888'>TC: " + formatearNumero(f.tipoCambio) + "</div>"
+      : "Gs. " + formatearNumero(montoTotal);
+    var ivaHtml = f.esUSD
+      ? "USD " + formatearUSD(impuesto)
+      : "Gs. " + formatearNumero(impuesto);
     var retHtml = f.esUSD
       ? "USD " + formatearUSD(f.retUSD) + "<div style='font-size:10px;color:#888'>Gs. " + formatearNumero(f.retGS) + "</div>"
       : "Gs. " + formatearNumero(f.retGS);
-    var minimoHtml = "";
-    if (f.compra) {
-      var color = f.aplicaRetencion ? "#2d7a0e" : "#a32d2d";
-      var titulo = f.aplicaRetencion
-        ? "Total Orden de Pago: Gs. " + formatearNumero(f.totalCompra) + " Supera el minimo"
-        : "Total Orden de Pago: Gs. " + formatearNumero(f.totalCompra) + " No alcanza el minimo";
-      minimoHtml = "<span style='display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:" + color + ";color:white;font-size:10px;font-weight:bold;cursor:help;flex-shrink:0' title='" + titulo + "'>i</span>";
-    }
     var btnAccion = "";
     if (f.estado === "RECHAZADO") {
       btnAccion = "<button class='btn-reenviar' onclick='reenviar(" + f.id + ")' style='margin-bottom:4px;display:block'>Reenviar</button>" +
@@ -683,10 +718,11 @@ function renderTabla() {
       "<td><input type='checkbox' " + checked + " " + disabled + " onchange='toggleSeleccion(" + f.id + ", this)'></td>" +
       "<td style='font-family:monospace;font-size:11px'>" + f.nro + "</td>" +
       "<td><strong>" + f.proveedor + "</strong><div style='font-size:10px;color:#888'>" + f.ruc + "</div></td>" +
-      "<td style='font-family:monospace;font-size:11px'>" + (f.compra || "—") + "</td>" +
+      "<td>" + ordenPagoHtml + "</td>" +
       "<td>" + f.moneda + "</td>" +
       "<td class='der'>" + montoHtml + "</td>" +
-      "<td class='der'><div style='display:flex;align-items:center;justify-content:flex-end;gap:4px'><strong>" + retHtml + "</strong>" + minimoHtml + "</div></td>" +
+      "<td class='der' style='color:#666'>" + ivaHtml + "</td>" +
+      "<td class='der'><strong>" + retHtml + "</strong></td>" +
       "<td style='font-size:11px'>" + fechaEmision + "</td>" +
       "<td>" + generarBadge(f.estado) + "</td>" +
       "<td>" + btnAccion + "</td>" +
@@ -709,16 +745,27 @@ function generarBadge(estado) {
 
 function actualizarStats() {
   var sinauth = 0, pendiente = 0, procesado = 0, rechazado = 0;
+  var conOrden = 0, sinOrden = 0;
   for (var i = 0; i < facturas.length; i++) {
-    if (facturas[i].estado === "PENDIENTE_AUTH") sinauth++;
-    if (facturas[i].estado === "PENDIENTE")      pendiente++;
-    if (facturas[i].estado === "PROCESADO")      procesado++;
-    if (facturas[i].estado === "RECHAZADO")      rechazado++;
+    var f = facturas[i];
+    if (f.estado === "PENDIENTE_AUTH") sinauth++;
+    if (f.estado === "PENDIENTE")      pendiente++;
+    if (f.estado === "PROCESADO")      procesado++;
+    if (f.estado === "RECHAZADO")      rechazado++;
+    // Desglose de pendientes por orden de pago
+    if (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") {
+      if (f.compra) conOrden++;
+      else sinOrden++;
+    }
   }
   var elTotal = document.getElementById("stat-total");
   var elPendiente = document.getElementById("stat-pendiente");
+  var elConOrden = document.getElementById("stat-con-orden");
+  var elSinOrden = document.getElementById("stat-sin-orden");
   if (elTotal) elTotal.textContent = facturas.length;
   if (elPendiente) elPendiente.textContent = pendiente;
+  if (elConOrden) elConOrden.textContent = conOrden;
+  if (elSinOrden) elSinOrden.textContent = sinOrden;
 }
 
 function toggleSeleccion(id, checkbox) {
@@ -730,14 +777,16 @@ function seleccionarTodas() {
   seleccionados = [];
   var buscar = document.getElementById("filtro-buscar").value.toLowerCase();
   var mesFiltro = document.getElementById("filtro-mes").value;
+  var soloConOrden = document.getElementById("filtro-con-orden").checked;
   for (var i = 0; i < facturas.length; i++) {
     var f = facturas[i];
     // Respetar filtros activos
     if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
     if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
-    // Seleccionar todas las pendientes visibles
-    if (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") {
+    if (soloConOrden && !f.compra) continue;
+    // Seleccionar todas las pendientes visibles CON orden de pago
+    if ((f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.compra) {
       seleccionados.push(f.id);
     }
   }
@@ -925,8 +974,8 @@ var RETENCION_CONFIG = {
   retenerIva: true,
   ivaPorcentaje10: 30,
   ivaPorcentaje5: 30,
-  retenerRenta: true,
-  rentaPorcentaje: 10
+  retenerRenta: false,
+  rentaPorcentaje: 0
 };
 
 /**
@@ -1037,12 +1086,18 @@ function descargarTxt() {
         }
       }
 
-      // Determinar la tasa del IVA que aplica al detalle de la retención
-      var tasaDetalle = "10"; 
-      if (r.ivaPorcentaje5 > 0) {
-        tasaDetalle = "5";
-      } else if (r.baseImponible === 0 || (!r.ivaPorcentaje10 && !r.ivaPorcentaje5)) {
-        tasaDetalle = "0";
+      // Determinar la tasa del IVA que aplica al detalle de la retención.
+      // FIX Bug tasa: r.ivaPorcentaje10 no viene del dashboard, era una comparación
+      // que siempre daba false y todo caía en "0" (exento). Ahora se usa montoRetencion:
+      // si hay retención calculada, hubo IVA (la retención es SOLO sobre el impuesto).
+      // Para distinguir 10% vs 5% se usa el ratio retencion/base ≈ 2.72% para 10%
+      // (10/11 * 30%) vs ≈ 1.30% para 5% (5/21 * 30%).
+      var tasaDetalle = "0"; // exento por defecto
+      var montoRet = Number(r.montoRetencion) || 0;
+      var baseImp = Number(r.baseImponible) || 0;
+      if (montoRet > 0 && baseImp > 0) {
+        var ratio = montoRet / baseImp;
+        tasaDetalle = ratio > 0.02 ? "10" : "5"; // 10% da ~2.72%, 5% da ~1.30%
       }
 
       // Situación del informado (por ahora fijo; cuando manejen autofacturas
@@ -1135,7 +1190,7 @@ function descargarTxt() {
           "rentaToneladasBase": 0,
           "rentaToneladasCantidad": 0,
           "ivaPorcentaje5": tasaDetalle === "5" ? RETENCION_CONFIG.ivaPorcentaje5 : 0,
-          "ivaPorcentaje10": tasaDetalle === "10" ? RETENCION_CONFIG.ivaPorcentaje10 : 30
+          "ivaPorcentaje10": tasaDetalle === "10" ? RETENCION_CONFIG.ivaPorcentaje10 : 0
         }
       };
 
