@@ -2,7 +2,7 @@
 // CONFIGURACION
 // =============================================
 var URL_API = "http://127.0.0.1:8080";
-var MONTO_MINIMO = 1218000;
+var MONTO_MINIMO = 50000;
 var seleccionados = [];
 var pestanaActual = "todas";
 var facturas = [];
@@ -925,8 +925,8 @@ var RETENCION_CONFIG = {
   retenerIva: true,
   ivaPorcentaje10: 30,
   ivaPorcentaje5: 30,
-  retenerRenta: false,
-  rentaPorcentaje: 0
+  retenerRenta: true,
+  rentaPorcentaje: 10
 };
 
 /**
@@ -1135,7 +1135,7 @@ function descargarTxt() {
           "rentaToneladasBase": 0,
           "rentaToneladasCantidad": 0,
           "ivaPorcentaje5": tasaDetalle === "5" ? RETENCION_CONFIG.ivaPorcentaje5 : 0,
-          "ivaPorcentaje10": tasaDetalle === "10" ? RETENCION_CONFIG.ivaPorcentaje10 : 0
+          "ivaPorcentaje10": tasaDetalle === "10" ? RETENCION_CONFIG.ivaPorcentaje10 : 30
         }
       };
 
