@@ -72,6 +72,104 @@ public class DashboardController {
         return ResponseEntity.ok(resp);
     }
 
+    // =========================================================================
+    // GET /retenciones/migrar-conceptos
+    // One-time: completa los datos faltantes de los registros existentes en
+    // MariaDB leyéndolos desde SQL Anywhere en una sola pasada:
+    //   - concepto (comentarios de la factura)
+    //   - factor_cambio (cotización, si falta)
+    //   - fecha_factura (si falta)
+    //   - razon_social (con fallback a primer_nombre si está vacía)
+    // No modifica nada en SQL Anywhere — solo LEE de ahí y ESCRIBE en MariaDB.
+    // =========================================================================
+    @GetMapping("/migrar-conceptos")
+    public ResponseEntity<?> migrarConceptos() {
+        List<Map<String, Object>> pendientes = mariaDb.queryForList(
+            "SELECT id, id_factura_orig FROM retenciones_enviadas " +
+            "WHERE concepto IS NULL OR concepto = '' " +
+            "   OR fecha_factura IS NULL " +
+            "   OR factor_cambio IS NULL " +
+            "   OR razon_social IS NULL OR razon_social = '' " +
+            "   OR razon_social IN ('—', '-', '---', 'Sin nombre', 'null')"
+        );
+
+        int actualizados = 0;
+        List<String> errores = new ArrayList<>();
+
+        for (Map<String, Object> reg : pendientes) {
+            Long idFactura = ((Number) reg.get("id_factura_orig")).longValue();
+            Long idRet = ((Number) reg.get("id")).longValue();
+            try {
+                List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
+                    "SELECT fr.comentarios, fr.factor_cambio, fr.fecha, " +
+                    "p.razon_social, p.primer_nombre " +
+                    "FROM facturas_recibidas fr " +
+                    "JOIN personas p ON p.persona = fr.proveedor " +
+                    "WHERE fr.factura = ?",
+                    idFactura
+                );
+                if (resultado.isEmpty()) {
+                    errores.add("Factura " + idFactura + ": no encontrada en SQL Anywhere");
+                    continue;
+                }
+                Map<String, Object> f = resultado.get(0);
+
+                String concepto = f.get("comentarios") != null
+                        ? String.valueOf(f.get("comentarios")).trim() : null;
+                if (concepto != null && concepto.length() > 300) {
+                    concepto = concepto.substring(0, 300);
+                }
+
+                Double factorCambio = null;
+                if (f.get("factor_cambio") != null) {
+                    double fc = Double.parseDouble(f.get("factor_cambio").toString());
+                    if (fc > 0) factorCambio = fc;
+                }
+
+                String fechaFactura = null;
+                if (f.get("fecha") != null) {
+                    String s = String.valueOf(f.get("fecha"));
+                    if (s.length() >= 10) fechaFactura = s.substring(0, 10);
+                }
+
+                // Razón social con fallback a primer_nombre (igual que en enviarLote)
+                String razonSocial = null;
+                Object rs = f.get("razon_social");
+                Object pn = f.get("primer_nombre");
+                if (rs != null && !rs.toString().trim().isEmpty()) {
+                    razonSocial = rs.toString().trim();
+                } else if (pn != null && !pn.toString().trim().isEmpty()) {
+                    razonSocial = pn.toString().trim();
+                }
+
+                // COALESCE/CASE: solo completa lo que falta, no pisa datos cargados.
+                // Para razon_social también reemplaza placeholders ('—', 'Sin nombre').
+                mariaDb.update(
+                    "UPDATE retenciones_enviadas SET " +
+                    "concepto = COALESCE(NULLIF(concepto, ''), ?), " +
+                    "factor_cambio = COALESCE(factor_cambio, ?), " +
+                    "fecha_factura = COALESCE(fecha_factura, ?), " +
+                    "razon_social = CASE " +
+                    "  WHEN razon_social IS NULL OR razon_social = '' " +
+                    "       OR razon_social IN ('—', '-', '---', 'Sin nombre', 'null') " +
+                    "  THEN COALESCE(?, razon_social) ELSE razon_social END " +
+                    "WHERE id = ?",
+                    concepto, factorCambio, fechaFactura, razonSocial, idRet
+                );
+                actualizados++;
+
+            } catch (Exception e) {
+                errores.add("Factura " + idFactura + ": " + e.getMessage());
+            }
+        }
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("total_pendientes", pendientes.size());
+        resp.put("actualizados", actualizados);
+        if (!errores.isEmpty()) resp.put("errores", errores);
+        return ResponseEntity.ok(resp);
+    }
+
     @GetMapping("/dashboard")
     public Map<String, Object> getDashboard() {
         Map<String, Object> respuesta = new HashMap<>();
@@ -89,7 +187,7 @@ public class DashboardController {
     }
 
     @PostMapping("/reenviar/{id}")
-    public Map<String, Object> reenviar(@PathVariable String id) {
+    public Map<String, Object> reenviar(@PathVariable Long id) {
         Map<String, Object> resp = new HashMap<>();
         try {
             int rows = mariaDb.update(
@@ -151,6 +249,7 @@ public class DashboardController {
                 "  nro_comprobante   AS numDocRet, " +
                 "  ruc_proveedor     AS rucProveedor, " +
                 "  razon_social      AS razonSocial, " +
+                "  concepto          AS concepto, " +
                 "  nro_comprobante   AS nroFactura, " +
                 "  num_timbrado      AS numTimbrado, " +
                 "  timbrado_proveedor AS timbradoProveedor, " +
@@ -205,6 +304,11 @@ public class DashboardController {
     }
 
     // Actualiza el estado de facturas enviadas o a enviar a Tesaká
+    /** Estados válidos que puede recibir el endpoint actualizar-estado */
+    private static final java.util.Set<String> ESTADOS_VALIDOS = java.util.Set.of(
+        "PENDIENTE", "ENVIADO", "APROBADO", "RECHAZADO", "ERROR", "TESAKA_GENERADO"
+    );
+
     @PostMapping("/actualizar-estado")
     public ResponseEntity<?> actualizarEstadoTesaka(@RequestBody Map<String, Object> request) {
         @SuppressWarnings("unchecked")
@@ -214,8 +318,19 @@ public class DashboardController {
         if (ids == null || ids.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "No se enviaron IDs"));
         }
+        // Validación: límite de lote para evitar queries desproporcionadas
+        if (ids.size() > 500) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Máximo 500 IDs por solicitud"));
+        }
+        // Validación: whitelist de estados — evita que se escriba cualquier
+        // string arbitrario en la columna estado
+        if (estado == null || !ESTADOS_VALIDOS.contains(estado.toUpperCase())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "Estado inválido: '" + estado + "'. Válidos: " + ESTADOS_VALIDOS
+            ));
+        }
 
-        int actualizados = retencionRepository.actualizarEstadoEnvioTesaka(ids, estado);
+        int actualizados = retencionRepository.actualizarEstadoEnvioTesaka(ids, estado.toUpperCase());
 
         return ResponseEntity.ok(Map.of(
             "mensaje", "Se actualizaron " + actualizados + " retenciones a " + estado,
@@ -233,6 +348,17 @@ public class DashboardController {
 
         if (nroComprobante == null || nroComprobante.trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "El campo nro_comprobante es requerido."));
+        }
+        // Validación: solo APROBADO o RECHAZADO son respuestas válidas de Tesaka
+        if (estado == null || !java.util.Set.of("APROBADO", "RECHAZADO").contains(estado.toUpperCase())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "Estado inválido: '" + estado + "'. Válidos: APROBADO, RECHAZADO"
+            ));
+        }
+        estado = estado.toUpperCase();
+        // Sanitizar longitud del comentario (evita payloads gigantes)
+        if (aprobacionComentario != null && aprobacionComentario.length() > 1000) {
+            aprobacionComentario = aprobacionComentario.substring(0, 1000);
         }
 
         try {

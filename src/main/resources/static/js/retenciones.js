@@ -363,7 +363,7 @@ function renderDashboard() {
     html +=
       "<td style='font-family:monospace;font-size:11px'>" + (r.numDocRet || "—") + "</td>" +
       "<td style='font-size:11px'>" + (r.rucProveedor || "—") + "</td>" +
-      "<td><strong style='font-size:12px'>" + (r.razonSocial || "—") + "</strong></td>" +
+      "<td><strong style='font-size:12px'>" + (r.razonSocial && r.razonSocial.trim() !== "" && ["—","-","---","null","Sin nombre"].indexOf(r.razonSocial.trim()) === -1 ? r.razonSocial : "RUC " + (r.rucProveedor || "s/d")) + "</strong></td>" +
       "<td style='font-family:monospace;font-size:11px'>" + (r.timbradoProveedor || r.numTimbrado || "—") + "</td>" +
       "<td style='font-family:monospace;font-size:11px'>" + (r.nroFactura || "—") + "</td>" +
       "<td class='der'>" + simbolo + formatMonto(total) + "</td>" +
@@ -1185,7 +1185,11 @@ function descargarTxt() {
             "cantidad": 1,
             "tasaAplica": tasaDetalle,
             "precioUnitario": precioIvaIncluido,
-            "descripcion": "Retención correspondiente a Comprobante de Venta Nro: " + (nroComprobante || "—")
+            // Descripción: usa el concepto/comentario de la factura si existe.
+            // Fallback: referencia al comprobante.
+            "descripcion": r.concepto && String(r.concepto).trim() !== ""
+              ? String(r.concepto).trim().substring(0, 300)
+              : "Retención correspondiente a Comprobante de Venta Nro: " + (nroComprobante || "—")
           }
         ],
         "retencion": {

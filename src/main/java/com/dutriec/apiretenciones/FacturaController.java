@@ -41,32 +41,45 @@ public class FacturaController {
     public List<Resultado> enviarLote(@RequestBody List<Long> ids) {
 
         List<Resultado> resultados = new ArrayList<>();
+
+        // Validación de entrada
+        if (ids == null || ids.isEmpty()) return resultados;
+        if (ids.size() > 500) {
+            Resultado err = new Resultado();
+            err.setEstado("ERROR");
+            err.setMotivo("Máximo 500 facturas por lote. Recibidas: " + ids.size());
+            resultados.add(err);
+            return resultados;
+        }
+
         String timbrado = retencionRepo.obtenerTimbradoActivo();
+
+        // OPTIMIZACIÓN: chequear duplicados en UNA sola query (antes era 1 por factura)
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        List<Long> yaEnviadas = mariaDb.queryForList(
+            "SELECT DISTINCT id_factura_orig FROM retenciones_enviadas " +
+            "WHERE id_factura_orig IN (" + placeholders + ") " +
+            "AND estado NOT IN ('RECHAZADO','ERROR')",
+            Long.class, ids.toArray()
+        );
+        java.util.Set<Long> setYaEnviadas = new java.util.HashSet<>(yaEnviadas);
 
         for (Long id : ids) {
             Resultado r = new Resultado();
             r.setIdFactura(id);
             try {
-                Factura factura = facturaRepo.obtenerPorId(id);
-                if (factura == null) {
+                // Duplicado: detectado con la query batch de arriba
+                if (setYaEnviadas.contains(id)) {
                     r.setEstado("ERROR");
-                    r.setMotivo("Factura no encontrada: " + id);
+                    r.setMotivo("La factura " + id + " ya fue aprobada anteriormente (duplicado evitado)");
                     resultados.add(r);
                     continue;
                 }
 
-                // FIX Bug duplicados: evitar aprobar dos veces la misma factura.
-                // Antes se podía aprobar la misma factura repetidamente y aparecía
-                // duplicada en el dashboard (ej: CLARISE dos veces).
-                Integer yaExiste = mariaDb.queryForObject(
-                    "SELECT COUNT(*) FROM retenciones_enviadas " +
-                    "WHERE id_factura_orig = ? AND estado NOT IN ('RECHAZADO','ERROR')",
-                    Integer.class, id
-                );
-                if (yaExiste != null && yaExiste > 0) {
+                Factura factura = facturaRepo.obtenerPorId(id);
+                if (factura == null) {
                     r.setEstado("ERROR");
-                    r.setMotivo("La factura " + factura.getFacturaFisica()
-                            + " ya fue aprobada anteriormente (duplicado evitado)");
+                    r.setMotivo("Factura no encontrada: " + id);
                     resultados.add(r);
                     continue;
                 }
@@ -83,8 +96,6 @@ public class FacturaController {
                 }
 
                 // Validación: la factura debe tener orden de pago asignada
-                // para procesar la retención. Sin ella no se puede identificar
-                // el pago que la respalda.
                 if (factura.getCompra() == null) {
                     r.setEstado("ERROR");
                     r.setMotivo("La factura " + factura.getFacturaFisica()
@@ -92,9 +103,6 @@ public class FacturaController {
                     resultados.add(r);
                     continue;
                 }
-
-                // ---- Traer datos completos del proveedor desde SQL Anywhere ----
-                Map<String, Object> proveedor = obtenerDatosProveedor(id);
 
                 // ---- Generar correlativo ----
                 String numDocRet = retencionRepo.generarNumDocRet();
@@ -104,25 +112,15 @@ public class FacturaController {
                 double montoImpuesto = factura.getMontoImpuesto() != null ? factura.getMontoImpuesto() : 0;
                 double retencion     = Math.round(montoImpuesto * 0.30);
 
-                String ruc         = proveedor != null ? String.valueOf(proveedor.get("ruc"))         : factura.getRuc();
-                // FIX: usar primer_nombre como fallback cuando razon_social está vacío
-                // (ej: FRANCISCO DANIEL solo tiene primer_nombre, no razon_social)
-                String razonSocial = "";
-                if (proveedor != null) {
-                    Object rs = proveedor.get("razon_social");
-                    Object pn = proveedor.get("primer_nombre");
-                    if (rs != null && !rs.toString().trim().isEmpty()) {
-                        razonSocial = rs.toString().trim();
-                    } else if (pn != null && !pn.toString().trim().isEmpty()) {
-                        razonSocial = pn.toString().trim();
-                    }
-                }
-                if (razonSocial.isEmpty()) {
-                    razonSocial = factura.getRazonSocial() != null ? factura.getRazonSocial() : "Sin nombre";
-                }
-                String correo      = proveedor != null && proveedor.get("mail")      != null ? String.valueOf(proveedor.get("mail"))      : null;
-                String telefono    = proveedor != null && proveedor.get("telefonos") != null ? String.valueOf(proveedor.get("telefonos")) : null;
-                String direccion   = proveedor != null && proveedor.get("direccion") != null ? String.valueOf(proveedor.get("direccion")) : null;
+                // OPTIMIZACIÓN: los datos del proveedor ya vienen en obtenerPorId
+                // (antes se hacía una SEGUNDA query idéntica a SQL Anywhere solo para
+                // mail/teléfono/dirección — se eliminó obtenerDatosProveedor)
+                String ruc         = factura.getRuc();
+                String razonSocial = factura.getRazonSocial() != null && !factura.getRazonSocial().trim().isEmpty()
+                        ? factura.getRazonSocial().trim() : "Sin nombre";
+                String correo      = factura.getCorreo();
+                String telefono    = factura.getTelefono();
+                String direccion   = factura.getDireccion();
 
                 // ---- Guardar en MariaDB ----
                 // NOTA: si las columnas num_timbrado / correo_proveedor / telefono_proveedor /
@@ -130,14 +128,15 @@ public class FacturaController {
                 //       migration_add_columns.sql incluido en este paquete de corrección.
                 mariaDb.update(
                     "INSERT INTO retenciones_enviadas " +
-                    "(id_factura_orig, nro_comprobante, ruc_proveedor, razon_social, " +
+                    "(id_factura_orig, nro_comprobante, ruc_proveedor, razon_social, concepto, " +
                     "monto, retencion, moneda, factor_cambio, estado, num_timbrado, timbrado_proveedor, " +
                     "fecha_factura, correo_proveedor, telefono_proveedor, direccion_proveedor, fecha_envio) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, NOW())",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, NOW())",
                     id,
                     factura.getFacturaFisica(),
                     ruc,
                     razonSocial,
+                    factura.getComentarios() != null ? factura.getComentarios().trim() : null,
                     montoGravado,
                     retencion,
                     factura.getMoneda() != null ? factura.getMoneda() : "GS",
@@ -171,21 +170,4 @@ public class FacturaController {
         return resultados;
     }
 
-    // =========================================================================
-    // Trae los datos completos del proveedor desde SQL Anywhere
-    // =========================================================================
-    private Map<String, Object> obtenerDatosProveedor(Long idFactura) {
-        try {
-            List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
-                "SELECT p.razon_social, p.primer_nombre, p.ruc, p.mail, p.telefonos, p.direccion " +
-                "FROM facturas_recibidas fr " +
-                "JOIN personas p ON fr.proveedor = p.persona " +
-                "WHERE fr.factura = ?", idFactura
-            );
-            return resultado.isEmpty() ? null : resultado.get(0);
-        } catch (Exception e) {
-            System.err.println("[obtenerDatosProveedor] Error para factura " + idFactura + ": " + e.getMessage());
-            return null;
-        }
-    }
 }
