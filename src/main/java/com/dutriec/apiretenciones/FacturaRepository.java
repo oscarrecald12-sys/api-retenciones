@@ -24,10 +24,11 @@ public class FacturaRepository {
                 = "SELECT fr.factura, fr.factura_fisica, fr.fecha, "
                 + "fr.compra, fr.forma_pago, "
                 + "p.razon_social, p.primer_nombre, p.ruc, "
+                + "p.mail, p.telefonos, p.direccion, "
                 + "fr.monto_gravado, fr.monto_impuesto, "
                 + "fr.monto_gravado_5, fr.monto_impuesto_5, "
                 + "fr.monto_exento, fr.moneda, "
-                + "fr.factor_cambio, fr.timbrado, fr.estado "
+                + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios "
                 + "FROM facturas_recibidas fr "
                 + "JOIN personas p ON p.persona = fr.proveedor "
                 + "WHERE fr.estado = 'A' "
@@ -49,10 +50,11 @@ public class FacturaRepository {
                 = "SELECT fr.factura, fr.factura_fisica, fr.fecha, "
                 + "fr.compra, fr.forma_pago, "
                 + "p.razon_social, p.primer_nombre, p.ruc, "
+                + "p.mail, p.telefonos, p.direccion, "
                 + "fr.monto_gravado, fr.monto_impuesto, "
                 + "fr.monto_gravado_5, fr.monto_impuesto_5, "
                 + "fr.monto_exento, fr.moneda, "
-                + "fr.factor_cambio, fr.timbrado, fr.estado "
+                + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios "
                 + "FROM facturas_recibidas fr "
                 + "JOIN personas p ON p.persona = fr.proveedor "
                 + "WHERE fr.factura = ?";
@@ -101,6 +103,10 @@ public class FacturaRepository {
         f.setFactorCambio(rs.getDouble("factor_cambio"));
         f.setTimbrado(rs.getString("timbrado"));
         f.setEstado(rs.getString("estado"));
+        f.setComentarios(rs.getString("comentarios"));
+        f.setCorreo(rs.getString("mail"));
+        f.setTelefono(rs.getString("telefonos"));
+        f.setDireccion(rs.getString("direccion"));
         return f;
     }
 }

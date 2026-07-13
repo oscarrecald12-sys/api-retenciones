@@ -43,13 +43,12 @@
     <header class="header">
       <div class="header-izq">
         <h1 class="titulo">Retenciones SIFEN</h1>
-        <p class="subtitulo">Gestión y envío automático de comprobantes de retención · DUTRIEC SA</p>
+        <p class="subtitulo">Gestión y envío automático de comprobantes de retención · DUTRIEC S.A</p>
       </div>
       <div class="header-der" style="display:flex;align-items:center;gap:12px">
         <span class="header-usuario">&#128100; <span id="label-usuario"></span></span>
         <button class="btn-logout" onclick="doLogout()">Salir</button>
-        <button class="btn-primario" id="btn-enviar">&#9654; Enviar al SIFEN</button>
-      </div>
+       </div>
     </header>
 
     <div class="contenedor">
@@ -78,16 +77,17 @@
           <div class="tarjeta">
             <p class="tarjeta-label">Pendiente de aprobación</p>
             <p class="tarjeta-valor color-amarillo" id="stat-pendiente">0</p>
+            <p style="font-size:11px;color:#666;margin-top:4px">
+              <span style="color:#2d7a0e;font-weight:600" id="stat-con-orden">0</span> con orden ·
+              <span style="color:#a32d2d;font-weight:600" id="stat-sin-orden">0</span> sin orden
+            </p>
           </div>
         </div>
 
         <!-- PESTAÑAS ESTADO -->
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <div class="pestanas">
-            <button class="pestana activa" onclick="cambiarPestana('todas', this)">Pendientes de aprobación</button>
-            <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Facturas aprobadas</button>
-          </div>
-          <button class="btn-azul" onclick="cargarFacturas()" style="height:34px">&#8635; Actualizar</button>
+        <div class="pestanas">
+          <button class="pestana activa" onclick="cambiarPestana('todas', this)">Pendientes de aprobación</button>
+          <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Facturas aprobadas</button>
         </div>
 
         <!-- FILTROS Y ACCIONES -->
@@ -109,6 +109,10 @@
               <option value="11">Noviembre 2026</option>
               <option value="12">Diciembre 2026</option>
             </select>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#333;cursor:pointer;padding:6px 12px;border:1px solid #ddd;border-radius:4px;background:#fff;white-space:nowrap;user-select:none">
+              <input type="checkbox" id="filtro-con-orden" onchange="renderTabla()" style="width:14px !important;height:14px !important;margin:0 !important;padding:0 !important;cursor:pointer;flex-shrink:0">
+              Solo con orden de pago
+            </label>
           </div>
           <div class="acciones-sel">
             <span id="info-seleccion">0 facturas seleccionadas</span>
@@ -131,7 +135,8 @@
                 <th>Proveedor / RUC</th>
                 <th>Orden Pago</th>
                 <th>Moneda</th>
-                <th class="der">Monto</th>
+                <th class="der">Monto Total</th>
+                <th class="der">IVA</th>
                 <th class="der">Retención 30%</th>
                 <th>Fecha Emisión</th>
                 <th>Estado</th>
@@ -207,14 +212,12 @@
                 <th>Razón Social</th>
                 <th>Timbrado</th>
                 <th>Nº Factura</th>
-                <th class="der">Base Imponible</th>
+                <th class="der">Monto Total</th>
+                <th class="der">IVA</th>
                 <th class="der">Retención</th>
                 <th>Tipo</th>
                 <th>Estado TESAKA</th>
                 <th>Fecha envío</th>
-                <th style="color:#a32d2d">Correo (prov.)</th>
-                <th style="color:#a32d2d">Teléfono (prov.)</th>
-                <th style="color:#a32d2d">Dirección (prov.)</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -362,7 +365,7 @@
     </div>
   </div>
 
-  <script src="js/retenciones.js?v=10"></script>
+  <script src="js/retenciones.js?v=22"></script>
 </body>
 
 </html>

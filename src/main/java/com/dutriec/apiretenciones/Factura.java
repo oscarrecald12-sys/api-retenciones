@@ -18,6 +18,10 @@ public class Factura {
     private String estado;
     private Long compra;
     private String formaPago; // C=Contado, E=Crédito
+    private String comentarios; // Concepto/descripción de la factura
+    private String correo;      // mail del proveedor (de personas)
+    private String telefono;    // teléfonos del proveedor
+    private String direccion;   // dirección del proveedor
 
     // Getters y Setters
     public Long getFactura() { return factura; }
@@ -67,4 +71,16 @@ public class Factura {
 
     public String getEstado() { return estado; }
     public void setEstado(String estado) { this.estado = estado; }
+
+    public String getComentarios() { return comentarios; }
+    public void setComentarios(String comentarios) { this.comentarios = comentarios; }
+
+    public String getCorreo() { return correo; }
+    public void setCorreo(String correo) { this.correo = correo; }
+
+    public String getTelefono() { return telefono; }
+    public void setTelefono(String telefono) { this.telefono = telefono; }
+
+    public String getDireccion() { return direccion; }
+    public void setDireccion(String direccion) { this.direccion = direccion; }
 }

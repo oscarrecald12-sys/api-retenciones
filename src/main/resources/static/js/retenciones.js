@@ -1,8 +1,11 @@
-1// =============================================
+// =============================================
 // CONFIGURACION
 // =============================================
 var URL_API = "http://127.0.0.1:8080";
-var MONTO_MINIMO = 1218000;
+// Todas las facturas aplican para retención — no hay filtro de monto mínimo,
+// ya que hay pagos que se retienen sin importar el monto (excepciones fiscales).
+// Si en el futuro se necesita reactivar, cambiar aplicaRetencion en cargarFacturas().
+var MONTO_MINIMO = 0;
 var seleccionados = [];
 var pestanaActual = "todas";
 var facturas = [];
@@ -15,7 +18,7 @@ var seleccionadosDash = [];
 // USUARIOS
 // =============================================
 var USUARIOS = {
-  "admin": "dutriec2026",
+  "admin":    "dutriec2026",
   "vgimenez": "sifen2026",
   "operador": "ret2026"
 };
@@ -25,7 +28,7 @@ var USUARIOS = {
 // =============================================
 function doLogin() {
   var usuario = document.getElementById("login-usuario").value.trim().toLowerCase();
-  var clave = document.getElementById("login-clave").value;
+  var clave   = document.getElementById("login-clave").value;
   if (!usuario || !clave) { mostrarErrorLogin("Ingresa usuario y contrasena."); return; }
   if (!USUARIOS[usuario] || USUARIOS[usuario] !== clave) {
     mostrarErrorLogin("Usuario o contrasena incorrectos.");
@@ -44,7 +47,7 @@ function mostrarErrorLogin(texto) {
   errEl.style.display = "block";
   var card = document.querySelector(".login-card");
   card.style.border = "1px solid #a32d2d";
-  setTimeout(function () { card.style.border = ""; }, 1500);
+  setTimeout(function() { card.style.border = ""; }, 1500);
 }
 
 function ingresarAlSistema(usuario) {
@@ -71,16 +74,16 @@ function doLogout() {
 // =============================================
 // INICIALIZACION
 // =============================================
-document.addEventListener("DOMContentLoaded", function () {
-  document.getElementById("login-clave").addEventListener("keydown", function (e) {
+document.addEventListener("DOMContentLoaded", function() {
+  document.getElementById("login-clave").addEventListener("keydown", function(e) {
     if (e.key === "Enter") doLogin();
   });
-  document.getElementById("login-usuario").addEventListener("keydown", function (e) {
+  document.getElementById("login-usuario").addEventListener("keydown", function(e) {
     if (e.key === "Enter") document.getElementById("login-clave").focus();
   });
   document.getElementById("btn-enviar").addEventListener("click", enviarAlSifen);
   var usr = sessionStorage.getItem("usr_retencion");
-  if (usr && USUARIOS[usr]) { setTimeout(function () { ingresarAlSistema(usr); }, 2000); }
+  if (usr && USUARIOS[usr]) { setTimeout(function() { ingresarAlSistema(usr); }, 2000); }
 });
 
 // =============================================
@@ -91,7 +94,7 @@ function cambiarVista(vista, elemento) {
   var botones = document.querySelectorAll(".pestana-main");
   for (var i = 0; i < botones.length; i++) botones[i].classList.remove("activa");
   elemento.classList.add("activa");
-  document.getElementById("vista-facturas").style.display = (vista === "facturas") ? "block" : "none";
+  document.getElementById("vista-facturas").style.display  = (vista === "facturas")  ? "block" : "none";
   document.getElementById("vista-dashboard").style.display = (vista === "dashboard") ? "block" : "none";
   var logSeccion = document.querySelector(".log-seccion");
   if (logSeccion) logSeccion.style.display = (vista === "dashboard") ? "block" : "none";
@@ -101,102 +104,73 @@ function cambiarVista(vista, elemento) {
 // =============================================
 // CARGA FACTURAS DESDE SQL ANYWHERE
 // =============================================
+// Refresh silencioso: actualiza datos en background sin spinner ni parpadeo.
+// Solo muestra spinner la primera vez (cuando no hay datos).
+var primeraVezFacturas = true;
+var primeraVezDash = true;
+
 function cargarFacturas() {
-  document.getElementById("cuerpo-tabla").innerHTML =
-    "<tr><td colspan='10' style='text-align:center;padding:2.5rem'>" +
-    "<div class='spinner-carga'></div>" +
-    "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando facturas...</div>" +
-    "</td></tr>";
+  if (primeraVezFacturas) {
+    document.getElementById("cuerpo-tabla").innerHTML =
+      "<tr><td colspan='10' style='text-align:center;padding:2.5rem'>" +
+      "<div class='spinner-carga'></div>" +
+      "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando facturas...</div>" +
+      "</td></tr>";
+  }
   fetch(URL_API + "/retenciones/pendientes")
-    .then(function (r) { if (!r.ok) throw new Error("Error al conectar con la API"); return r.json(); })
-    .then(function (datos) {
-
-      // =============================================
-      // LOGICA DNIT - agrupacion por tipo de pago
-      // =============================================
-
-      // Para CREDITO (E): agrupar por OP (compra)
+    .then(function(r) { if (!r.ok) throw new Error("Error al conectar con la API"); return r.json(); })
+    .then(function(datos) {
+      primeraVezFacturas = false;
       var totalesPorCompra = {};
-      datos.forEach(function (f) {
-        if (f.compra && f.formaPago === "E") {
+      datos.forEach(function(f) {
+        if (f.compra) {
           var monto = (f.montoGravado || 0) + (f.montoGravado5 || 0) + (f.montoExento || 0);
           var tc = f.factorCambio || 1;
           var montoGS = (f.moneda === "DL" || f.moneda === "USD") ? monto * tc : monto;
           totalesPorCompra[f.compra] = (totalesPorCompra[f.compra] || 0) + montoGS;
         }
       });
-
-      // Para CONTADO (C): agrupar por proveedor + fecha
-      var totalesPorProveedorFecha = {};
-      datos.forEach(function (f) {
-        if (f.formaPago === "C") {
-          var monto = (f.montoGravado || 0) + (f.montoGravado5 || 0) + (f.montoExento || 0);
-          var tc = f.factorCambio || 1;
-          var montoGS = (f.moneda === "DL" || f.moneda === "USD") ? monto * tc : monto;
-          var fechaStr = f.fecha ? String(f.fecha).substring(0, 10) : "";
-          var clave = (f.ruc || "") + "|" + fechaStr;
-          totalesPorProveedorFecha[clave] = (totalesPorProveedorFecha[clave] || 0) + montoGS;
-        }
-      });
-
-      facturas = datos.map(function (f) {
+      facturas = datos.map(function(f) {
         var esUSD = (f.moneda === "DL" || f.moneda === "USD");
         var tc = f.factorCambio || 1;
         var retUSD = 0, retGS = 0;
         if (esUSD) {
           retUSD = Math.round(((f.montoImpuesto || 0) * 0.30 + (f.montoImpuesto5 || 0) * 0.30) * 100) / 100;
-          retGS = Math.round(retUSD * tc);
+          retGS  = Math.round(retUSD * tc);
         } else {
           retGS = Math.round((f.montoImpuesto || 0) * 0.30 + (f.montoImpuesto5 || 0) * 0.30);
         }
-
-        var totalCompra = 0;
-        var aplicaRetencion = false;
-        var formaPago = f.formaPago || "E";
-
-        if (formaPago === "C") {
-          // CONTADO: evaluar suma por proveedor+fecha
-          var fechaStr = f.fecha ? String(f.fecha).substring(0, 10) : "";
-          var clave = (f.ruc || "") + "|" + fechaStr;
-          totalCompra = totalesPorProveedorFecha[clave] || 0;
-          aplicaRetencion = totalCompra >= MONTO_MINIMO;
-        } else {
-          // CREDITO (E): si tiene OP evaluar suma por OP, si no tiene OP no aplica aun
-          if (f.compra) {
-            totalCompra = totalesPorCompra[f.compra] || 0;
-            aplicaRetencion = totalCompra >= MONTO_MINIMO;
-          } else {
-            totalCompra = 0;
-            aplicaRetencion = false; // Sin OP = no se pago aun = no retener
-          }
-        }
-
+        var totalCompra = f.compra ? (totalesPorCompra[f.compra] || 0) : 0;
+        // Todas las facturas aplican para retención (validación de mínimo desactivada)
+        var aplicaRetencion = true;
+        // Preservar estado local si ya fue procesado en esta sesión
+        var existente = facturas.find(function(x) { return x.id === f.factura; });
         return {
           id: f.factura, nro: f.facturaFisica || "—",
           proveedor: f.razonSocial || "Sin nombre", ruc: f.ruc || "",
           compra: f.compra || null, moneda: f.moneda || "GS", tipoCambio: tc,
-          formaPago: formaPago,
           monto: (f.montoGravado || 0) + (f.montoGravado5 || 0) + (f.montoExento || 0),
+          montoImpuesto: f.montoImpuesto || 0,
+          montoImpuesto5: f.montoImpuesto5 || 0,
           tasa: calcularTasa(f), retGS: retGS, retUSD: retUSD, esUSD: esUSD,
           timbrado: f.timbrado || "", fecha: f.fecha || "",
           totalCompra: totalCompra, aplicaRetencion: aplicaRetencion,
-          estado: "PENDIENTE", motivo: ""
+          estado: (existente && existente.estado === "PROCESADO") ? "PROCESADO" : "PENDIENTE",
+          motivo: ""
         };
       });
       renderTabla();
     })
-    .catch(function (error) {
-      if (facturas.length > 0) {
-        mostrarMensaje("Error al cargar facturas: " + error.message, "error");
-        document.getElementById("cuerpo-tabla").innerHTML =
-          "<tr><td colspan='9' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo conectar con la API.</td></tr>";
-      } else {
+    .catch(function(error) {
+      if (primeraVezFacturas) {
         document.getElementById("cuerpo-tabla").innerHTML =
           "<tr><td colspan='9' style='text-align:center;padding:2rem;color:#aaa'>" +
           "<div class='spinner-carga'></div>" +
           "<div style='margin-top:10px;font-size:13px'>Conectando...</div>" +
           "</td></tr>";
         setTimeout(function() { cargarFacturas(); }, 3000);
+      } else {
+        mostrarMensaje("No se pudo actualizar las facturas. Se muestra la última versión.", "warning");
       }
     });
 }
@@ -205,28 +179,31 @@ function cargarFacturas() {
 // CARGA DASHBOARD DESDE MARIADB
 // =============================================
 function cargarDashboard() {
-  document.getElementById("cuerpo-dashboard").innerHTML =
-    "<tr><td colspan='11' style='text-align:center;padding:2.5rem'>" +
-    "<div class='spinner-carga'></div>" +
-    "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando datos...</div>" +
-    "</td></tr>";
+  if (primeraVezDash) {
+    document.getElementById("cuerpo-dashboard").innerHTML =
+      "<tr><td colspan='11' style='text-align:center;padding:2.5rem'>" +
+      "<div class='spinner-carga'></div>" +
+      "<div style='margin-top:10px;color:#aaa;font-size:13px'>Cargando datos...</div>" +
+      "</td></tr>";
+  }
   fetch(URL_API + "/retenciones/dashboard")
-    .then(function (r) { if (!r.ok) throw new Error("Error al cargar dashboard"); return r.json(); })
-    .then(function (data) {
-      document.getElementById("dash-enviadas").textContent = data.resumen.enviadas || 0;
+    .then(function(r) { if (!r.ok) throw new Error("Error al cargar dashboard"); return r.json(); })
+    .then(function(data) {
+      primeraVezDash = false;
+      document.getElementById("dash-enviadas").textContent   = data.resumen.enviadas   || 0;
       document.getElementById("dash-pendientes").textContent = data.resumen.pendientes || 0;
-      document.getElementById("dash-errores").textContent = data.resumen.errores || 0;
-      //TODO. quitar: no hace falta
-      //- document.getElementById("dash-fisicas").textContent    = data.resumen.fisicas    || 0;
-      //- document.getElementById("dash-monto").textContent      = "Gs. " + formatearNumero(data.resumen.montoTotal || 0);
+      document.getElementById("dash-errores").textContent    = data.resumen.errores    || 0;
       retencionesDB = data.retenciones || [];
-      //AQUI
       renderDashboard();
       renderLog(data.logs || []);
     })
-    .catch(function (error) {
-      document.getElementById("cuerpo-dashboard").innerHTML =
-        "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo cargar el dashboard: " + error.message + "</td></tr>";
+    .catch(function(error) {
+      if (!primeraVezDash) {
+        mostrarMensaje("No se pudo actualizar el dashboard.", "warning");
+      } else {
+        document.getElementById("cuerpo-dashboard").innerHTML =
+          "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#a32d2d'>No se pudo cargar el dashboard: " + error.message + "</td></tr>";
+      }
     });
 }
 
@@ -244,7 +221,7 @@ function cambiarPestanaDash(nombre, elemento) {
 
 function toggleSeleccionDash(id, checkbox) {
   if (checkbox.checked) { seleccionadosDash.push(id); }
-  else { seleccionadosDash = seleccionadosDash.filter(function (x) { return x !== id; }); }
+  else { seleccionadosDash = seleccionadosDash.filter(function(x) { return x !== id; }); }
   actualizarInfoSelDash();
 }
 
@@ -271,7 +248,7 @@ function actualizarInfoSelDash() {
   var n = seleccionadosDash.length;
   var el = document.getElementById("dash-info-sel");
   if (el) el.textContent = n + " factura" + (n !== 1 ? "s" : "") + " seleccionada" + (n !== 1 ? "s" : "");
-
+  
   // Habilitar/Deshabilitar el botón "Descargar TXT" dinámicamente
   var btnDescargar = document.getElementById("btn-descargar-txt");
   if (btnDescargar) {
@@ -292,46 +269,55 @@ function generarTesaka() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids: seleccionadosDash.map(Number) })
   })
-    .then(function (r) {
-      if (!r.ok) throw new Error("Error al generar");
-      return r.blob();
-    })
-    .then(function (blob) {
-      // Descargar archivo automáticamente
-      var url = window.URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = "tesaka_" + new Date().toISOString().substring(0, 10) + ".json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      mostrarMensaje(seleccionadosDash.length + " factura/s generadas para TESAKA ✓", "ok");
-      seleccionadosDash = [];
-      actualizarInfoSelDash();
-      cargarDashboard();
-    })
-    .catch(function (e) { mostrarMensaje("Error: " + e.message, "error"); })
-    .finally(function () { btn.disabled = false; btn.textContent = "✓ Generar TESAKA"; });
+  .then(function(r) {
+    if (!r.ok) throw new Error("Error al generar");
+    return r.blob();
+  })
+  .then(function(blob) {
+    // Descargar archivo automáticamente
+    var url = window.URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "tesaka_" + new Date().toISOString().substring(0, 10) + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    mostrarMensaje(seleccionadosDash.length + " factura/s generadas para TESAKA ✓", "ok");
+    seleccionadosDash = [];
+    actualizarInfoSelDash();
+    cargarDashboard();
+  })
+  .catch(function(e) { mostrarMensaje("Error: " + e.message, "error"); })
+  .finally(function() { btn.disabled = false; btn.textContent = "✓ Generar TESAKA"; });
 }
 
+// === MODIFICADO: renderDashboard() ===
 function renderDashboard() {
   var buscar = document.getElementById("dash-filtro-ruc").value.toLowerCase();
-  var tbody = document.getElementById("cuerpo-dashboard");
-  var filtrados = retencionesDB.filter(function (r) {
+  var tbody  = document.getElementById("cuerpo-dashboard");
+  var filtrados = retencionesDB.filter(function(r) {
     var matchEstado = pestanaDashActual === "todas" || r.estadoSifen === pestanaDashActual;
     var matchBuscar = !buscar ||
       (r.rucProveedor && r.rucProveedor.toLowerCase().indexOf(buscar) !== -1) ||
-      (r.numDocRet && r.numDocRet.toLowerCase().indexOf(buscar) !== -1) ||
-      (r.razonSocial && r.razonSocial.toLowerCase().indexOf(buscar) !== -1);
+      (r.numDocRet    && r.numDocRet.toLowerCase().indexOf(buscar)    !== -1) ||
+      (r.razonSocial  && r.razonSocial.toLowerCase().indexOf(buscar)  !== -1);
     return matchEstado && matchBuscar;
   });
   if (!filtrados.length) {
     tbody.innerHTML = "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#aaa'>Sin resultados</td></tr>";
     return;
   }
+
+  var mostrarCheckbox = mostrarCheckboxesEnDash();
+  // Actualizar header dinámicamente
+  var headerCheckbox = document.querySelector("#vista-dashboard thead th:first-child");
+  if (headerCheckbox) {
+    headerCheckbox.style.display = mostrarCheckbox ? "" : "none";
+  }
+
   var html = "";
-  filtrados.forEach(function (r) {
+  filtrados.forEach(function(r) {
     var esFE = r.cdcProveedor && r.cdcProveedor.trim() !== "";
     var tipoHtml = esFE
       ? "<span class='badge badge-procesado'>Electronica</span>"
@@ -339,33 +325,53 @@ function renderDashboard() {
 
     // -- Bloque de Acciones Modificado --
     var accion = "<div style='display:flex;gap:4px;flex-wrap:wrap'>";
-
+    
     // Botones para cada línea
     accion += "<button class='btn-reenviar' onclick='abrirRegistrarRespuesta(\"" + r.id + "\")' style='color:#2d7a0e;border-color:#b5e8b5;background:#f4fbf4'>Registrar Respuesta</button>";
     accion += "<button class='btn-reenviar' onclick='verDetallesLinea(\"" + r.id + "\")' style='color:#666;border-color:#ccc'>Ver Detalles</button>";
-
+    
     if (r.estadoSifen === "ERROR") {
       accion = "<button class='btn-rechazo' onclick='verRechazo(\"" + r.numDocRet + "\")'>Ver rechazo</button>";
-      //+ "<button class='btn-reenviar' onclick='reenviarRetencion(\"" + r.id + "\")' style='margin-left:4px'>Reenviar</button>";
+               //+ "<button class='btn-reenviar' onclick='reenviarRetencion(\"" + r.id + "\")' style='margin-left:4px'>Reenviar</button>";
     } else if (r.estadoSifen === "ENVIADO" && r.respuestaSifen) {
       accion = "<button class='btn-reenviar' onclick='verRespuesta(\"" + r.numDocRet + "\")' style='color:#0c447c;border-color:#b5d4f4'>Ver XML</button>";
     }
     var checked = seleccionadosDash.indexOf(String(r.id)) !== -1 ? "checked" : "";
-    html += "<tr>" +
-      "<td><input type='checkbox' class='dash-check-item' data-id='" + r.id + "' " + checked + " onchange='toggleSeleccionDash(this.dataset.id, this)'></td>" +
+
+    html += "<tr>";
+    
+    if (mostrarCheckbox) {
+      html += "<td><input type='checkbox' class='dash-check-item' data-id='" + r.id + "' " + 
+              checked + " onchange='toggleSeleccionDash(this.dataset.id, this)'></td>";
+    }
+
+    var esUSD = (r.moneda === "DL" || r.moneda === "USD");
+    var simbolo = esUSD ? "USD " : "Gs. ";
+    var formatMonto = esUSD ? formatearUSD : formatearNumero;
+
+    // Derivar el IVA a partir del monto de retención: retencion = impuesto × 30%
+    // Ratio > 2% indica tasa 10%, ratio menor indica 5%. Sin retención → exento.
+    var base = Number(r.baseImponible) || 0;
+    var ret  = Number(r.montoRetencion) || 0;
+    var iva  = 0;
+    if (ret > 0 && base > 0) {
+      var pctIva = ret / base > 0.02 ? 30 : 30; // 30% para ambos casos
+      iva = ret / (pctIva / 100);
+    }
+    var total = base + iva;
+
+    html +=
       "<td style='font-family:monospace;font-size:11px'>" + (r.numDocRet || "—") + "</td>" +
       "<td style='font-size:11px'>" + (r.rucProveedor || "—") + "</td>" +
-      "<td><strong style='font-size:12px'>" + (r.razonSocial || "—") + "</strong></td>" +
-      "<td style='font-family:monospace;font-size:11px'>" + (r.numTimbrado || "—") + "</td>" +
+      "<td><strong style='font-size:12px'>" + (r.razonSocial && r.razonSocial.trim() !== "" && ["—","-","---","null","Sin nombre"].indexOf(r.razonSocial.trim()) === -1 ? r.razonSocial : "RUC " + (r.rucProveedor || "s/d")) + "</strong></td>" +
+      "<td style='font-family:monospace;font-size:11px'>" + (r.timbradoProveedor || r.numTimbrado || "—") + "</td>" +
       "<td style='font-family:monospace;font-size:11px'>" + (r.nroFactura || "—") + "</td>" +
-      "<td class='der'>Gs. " + formatearNumero(r.baseImponible) + "</td>" +
-      "<td class='der'><strong>Gs. " + formatearNumero(r.montoRetencion) + "</strong></td>" +
+      "<td class='der'>" + simbolo + formatMonto(total) + "</td>" +
+      "<td class='der' style='color:#666'>" + simbolo + formatMonto(iva) + "</td>" +
+      "<td class='der'><strong>" + simbolo + formatMonto(ret) + "</strong></td>" +
       "<td>" + tipoHtml + "</td>" +
       "<td>" + badgeDashboard(r.estadoSifen) + "</td>" +
       "<td style='font-size:11px'>" + formatearFecha(r.fechaEnvio) + "</td>" +
-      "<td style='font-size:11px;color:#a32d2d'>" + (r.correoProveedor || "—") + "</td>" +
-      "<td style='font-size:11px;color:#a32d2d'>" + (r.telefonoProveedor || "—") + "</td>" +
-      "<td style='font-size:11px;color:#a32d2d'>" + (r.direccionProveedor || "—") + "</td>" +
       "<td>" + accion + "</td>" +
       "</tr>";
   });
@@ -373,8 +379,8 @@ function renderDashboard() {
 }
 
 function badgeDashboard(estado) {
-  var map = { "ENVIADO": "badge-procesado", "PENDIENTE": "badge-pendiente", "ERROR": "badge-rechazado", "FISICA_MANUAL": "badge-sinauth", "SIMULADO": "badge-anulado", "APROBADO": "badge-procesado" };
-  var labels = { "ENVIADO": "Enviado", "PENDIENTE": "Pendiente de envio", "ERROR": "Error", "FISICA_MANUAL": "Fisica manual", "SIMULADO": "Simulado", "APROBADO": "Aprobado" };
+  var map    = { "ENVIADO":"badge-procesado", "PENDIENTE":"badge-pendiente", "ERROR":"badge-rechazado", "FISICA_MANUAL":"badge-sinauth", "SIMULADO":"badge-anulado", "APROBADO":"badge-procesado" };
+  var labels = { "ENVIADO":"Enviado", "PENDIENTE":"Pendiente de envio", "ERROR":"Error", "FISICA_MANUAL":"Fisica manual", "SIMULADO":"Simulado", "APROBADO":"Aprobado" };
   return "<span class='badge " + (map[estado] || "") + "'>" + (labels[estado] || estado) + "</span>";
 }
 
@@ -395,7 +401,7 @@ function renderLog(logs) {
     "<th style='padding:8px 10px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em'>Fecha</th>" +
     "</tr></thead><tbody>";
 
-  logs.forEach(function (l) {
+  logs.forEach(function(l) {
     var exitoso = l.exitoso == 1 || l.exitoso === true;
     var color = exitoso ? "#2d7a0e" : "#a32d2d";
     var icono = exitoso ? "✓" : "✗";
@@ -405,16 +411,16 @@ function renderLog(logs) {
     var accion = l.accion || "";
     var partes = accion.replace("Retencion ", "").split(" — ");
     var comprobante = partes[0] || "—";
-    var proveedor = partes[1] || "—";
+    var proveedor   = partes[1] || "—";
 
     // Badge de estado según detalle
     var detalle = l.detalle || "";
     var estadoBadge = "";
-    if (detalle.indexOf("Aprobado") !== -1) estadoBadge = "<span class='badge badge-procesado'>Aprobado</span>";
-    else if (detalle.indexOf("Enviado") !== -1) estadoBadge = "<span class='badge badge-procesado'>Enviado</span>";
+    if (detalle.indexOf("Aprobado") !== -1)       estadoBadge = "<span class='badge badge-procesado'>Aprobado</span>";
+    else if (detalle.indexOf("Enviado") !== -1)    estadoBadge = "<span class='badge badge-procesado'>Enviado</span>";
     else if (detalle.indexOf("Error") !== -1 || detalle.indexOf("dCodRes") !== -1) estadoBadge = "<span class='badge badge-rechazado'>Error</span>";
     else if (detalle.indexOf("fisica") !== -1 || detalle.indexOf("Fisica") !== -1) estadoBadge = "<span class='badge badge-sinauth'>Fisica</span>";
-    else if (detalle.indexOf("Pendiente") !== -1) estadoBadge = "<span class='badge badge-pendiente'>Pendiente de aprobacion</span>";
+    else if (detalle.indexOf("Pendiente") !== -1)  estadoBadge = "<span class='badge badge-pendiente'>Pendiente de envio</span>";
     else estadoBadge = "<span class='badge badge-anulado'>" + detalle.substring(0, 12) + "</span>";
 
     var fecha = formatearFecha(l.fecha);
@@ -436,29 +442,29 @@ function renderLog(logs) {
 function reenviarRetencion(id) {
   if (!confirm("Reenviar esta retencion?")) return;
   fetch(URL_API + "/retenciones/reenviar/" + id, { method: "POST" })
-    .then(function (r) { return r.json(); })
-    .then(function () { mostrarMensaje("Retencion reenviada", "ok"); cargarDashboard(); })
-    .catch(function () { mostrarMensaje("Error al reenviar", "error"); });
+    .then(function(r) { return r.json(); })
+    .then(function() { mostrarMensaje("Retencion reenviada", "ok"); cargarDashboard(); })
+    .catch(function() { mostrarMensaje("Error al reenviar", "error"); });
 }
 
 // =============================================
 // VER RECHAZO — modal
 // =============================================
 function verRechazo(numDocRet) {
-  var r = retencionesDB.find(function (x) { return x.numDocRet === numDocRet; });
+  var r = retencionesDB.find(function(x) { return x.numDocRet === numDocRet; });
   if (!r) return;
   var motivo = r.respuestaSifen || "Sin descripcion";
   var codRes = "—";
   var mCod = motivo.match(/dCodRes[:\s]+(\d+)/);
   if (mCod) codRes = mCod[1];
-  document.getElementById("rec-numdoc").textContent = numDocRet;
+  document.getElementById("rec-numdoc").textContent    = numDocRet;
   document.getElementById("rec-proveedor").textContent = r.razonSocial || "—";
-  document.getElementById("rec-ruc").textContent = r.rucProveedor || "—";
-  document.getElementById("rec-factura").textContent = r.nroFactura || "—";
-  document.getElementById("rec-codres").textContent = codRes;
-  document.getElementById("rec-estres").textContent = "Rechazado";
-  document.getElementById("rec-msgres").textContent = motivo;
-  document.getElementById("rec-fecha").textContent = r.fechaEnvio ? String(r.fechaEnvio).substring(0, 16).replace("T", " ") : "—";
+  document.getElementById("rec-ruc").textContent       = r.rucProveedor || "—";
+  document.getElementById("rec-factura").textContent   = r.nroFactura || "—";
+  document.getElementById("rec-codres").textContent    = codRes;
+  document.getElementById("rec-estres").textContent    = "Rechazado";
+  document.getElementById("rec-msgres").textContent    = motivo;
+  document.getElementById("rec-fecha").textContent     = r.fechaEnvio ? String(r.fechaEnvio).substring(0, 16).replace("T", " ") : "—";
   document.getElementById("overlay-rechazo").dataset.id = r.id;
   document.getElementById("overlay-rechazo").style.display = "flex";
 }
@@ -474,9 +480,9 @@ function reenviarDesdeModal() {
 }
 
 function verRespuesta(numDocRet) {
-  var r = retencionesDB.find(function (x) { return x.numDocRet === numDocRet; });
+  var r = retencionesDB.find(function(x) { return x.numDocRet === numDocRet; });
   if (!r || !r.respuestaSifen) return;
-  document.getElementById("detalle-nro").textContent = numDocRet;
+  document.getElementById("detalle-nro").textContent       = numDocRet;
   document.getElementById("detalle-proveedor").textContent = r.razonSocial || r.rucProveedor;
   document.getElementById("detalle-motivo").innerHTML =
     "<pre style='font-size:11px;white-space:pre-wrap;color:#0c447c'>" +
@@ -513,37 +519,80 @@ function formatearUSD(n) { return (n || 0).toLocaleString("es-PY", { minimumFrac
 // APROBAR Y ENVIAR
 // =============================================
 function aprobarYEnviar() {
-  if (seleccionados.length === 0) { mostrarMensaje("Selecciona al menos una factura.", "error"); return; }
+  if (seleccionados.length === 0) { mostrarMensaje("Seleccioná al menos una factura para aprobar.", "warning"); return; }
 
-  var btn = document.getElementById("btn-aprobar");
-  btn.disabled = true; btn.textContent = "Enviando...";
+  // Validación: todas deben tener orden de pago asignada
+  var sinOrden = seleccionados.filter(function(id) {
+    var f = facturas.find(function(x) { return x.id === id; });
+    return f && !f.compra;
+  });
+  if (sinOrden.length > 0) {
+    var nombres = sinOrden.slice(0, 3).map(function(id) {
+      var f = facturas.find(function(x) { return x.id === id; });
+      return f ? f.nro : "—";
+    }).join(", ") + (sinOrden.length > 3 ? " y " + (sinOrden.length - 3) + " más" : "");
+    mostrarMensaje(
+      sinOrden.length + " factura/s sin orden de pago (" + nombres + "). Generá primero la orden de pago en el sistema.",
+      "error"
+    );
+    return;
+  }
 
-  fetch(URL_API + "/retenciones/enviar-lote", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(seleccionados)
-  })
-    .then(function (r) { if (!r.ok) throw new Error("Error HTTP " + r.status); return r.json(); })
-    .then(function (resultados) {
-      var ok = 0, errores = 0;
-      resultados.forEach(function (res) {
-        var f = facturas.find(function (x) { return x.id === res.idFactura; });
-        if (res.estado === "PENDIENTE") {
-          ok++;
-          if (f) { f.estado = "PROCESADO"; f.motivo = res.motivo || ""; }
-        } else {
-          errores++;
-          if (f) { f.estado = "RECHAZADO"; f.motivo = res.motivo || "Error desconocido"; }
-        }
+  var cant = seleccionados.length;
+  var nombres = seleccionados.slice(0, 3).map(function(id) {
+    var f = facturas.find(function(x) { return x.id === id; });
+    return f ? f.proveedor : "—";
+  }).join(", ") + (cant > 3 ? " y " + (cant - 3) + " más" : "");
+
+  confirmar(
+    "Aprobar " + cant + " retención" + (cant > 1 ? "es" : ""),
+    "Se enviarán al sistema: <strong>" + nombres + "</strong>.<br/>Esta acción no se puede deshacer.",
+    "Aprobar " + cant, "Cancelar"
+  ).then(function(ok) {
+    if (!ok) return;
+
+    var btn = document.getElementById("btn-aprobar");
+    btn.disabled = true;
+    btn.innerHTML = "<span class='spinner-btn'></span> Procesando...";
+
+    fetch(URL_API + "/retenciones/enviar-lote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(seleccionados.map(Number))
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error("Error al enviar al servidor");
+      return r.json();
+    })
+    .then(function(resultados) {
+      var exitosos = resultados.filter(function(r) { return r.estado !== "ERROR"; });
+      var errores = resultados.filter(function(r) { return r.estado === "ERROR"; });
+
+      exitosos.forEach(function(res) {
+        var f = facturas.find(function(x) { return x.id === res.idFactura; });
+        if (f) f.estado = "PROCESADO";
       });
+
       seleccionados = [];
       renderTabla();
-      if (errores === 0) mostrarMensaje(ok + " retención/es guardadas correctamente ✓", "ok");
-      else mostrarMensaje(ok + " ok, " + errores + " con error", "error");
-      cargarFacturas();
+      actualizarStats();
+
+      if (errores.length > 0 && exitosos.length > 0) {
+        mostrarMensaje(exitosos.length + " aprobada/s correctamente. " + errores.length + " con error.", "warning");
+        errores.forEach(function(e) { mostrarMensaje(e.motivo, "error"); });
+      } else if (errores.length > 0) {
+        errores.forEach(function(e) { mostrarMensaje(e.motivo, "error"); });
+      } else {
+        mostrarMensaje(cant + " retención" + (cant > 1 ? "es" : "") + " aprobada" + (cant > 1 ? "s" : "") + " correctamente", "ok");
+      }
     })
-    .catch(function (e) { mostrarMensaje("Error al conectar con la API: " + e.message, "error"); })
-    .finally(function () { btn.disabled = false; btn.textContent = "✓ Aprobar Facturas"; });
+    .catch(function(e) {
+      mostrarMensaje("Error de conexión: " + e.message, "error");
+    })
+    .finally(function() {
+      btn.disabled = false; btn.innerHTML = "✓ Aprobar Facturas";
+    });
+  });
 }
 
 function enviarAlSifen() {
@@ -551,20 +600,41 @@ function enviarAlSifen() {
   var cant = seleccionados.length;
   var btn = document.getElementById("btn-enviar");
   btn.disabled = true; btn.textContent = "Enviando...";
-  setTimeout(function () {
-    seleccionados.forEach(function (id) {
-      var f = facturas.find(function (x) { return x.id === id; });
+
+  fetch(URL_API + "/retenciones/enviar-lote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(seleccionados.map(Number))
+  })
+  .then(function(r) {
+    if (!r.ok) throw new Error("Error al enviar al servidor");
+    return r.json();
+  })
+  .then(function(resultados) {
+    var exitosos = resultados.filter(function(r) { return r.estado !== "ERROR"; });
+    var errores = resultados.filter(function(r) { return r.estado === "ERROR"; });
+
+    exitosos.forEach(function(res) {
+      var f = facturas.find(function(x) { return x.id === res.idFactura; });
       if (f) f.estado = "PROCESADO";
     });
+
     seleccionados = [];
-    mostrarMensaje(cant + " retencion/es enviadas al SIFEN", "ok");
-    btn.disabled = false; btn.textContent = "Enviar al SIFEN";
     renderTabla();
-  }, 1500);
+    actualizarStats();
+
+    if (errores.length > 0) {
+      mostrarMensaje(exitosos.length + " enviada/s, " + errores.length + " con error: " + errores[0].motivo, "error");
+    } else {
+      mostrarMensaje(cant + " retención/es enviadas ✓", "ok");
+    }
+  })
+  .catch(function(e) { mostrarMensaje("Error: " + e.message, "error"); })
+  .finally(function() { btn.disabled = false; btn.textContent = "▶ Enviar al SIFEN"; });
 }
 
 function reenviar(id) {
-  var f = facturas.find(function (x) { return x.id === id; });
+  var f = facturas.find(function(x) { return x.id === id; });
   if (f) { f.estado = "PROCESADO"; f.motivo = ""; }
   mostrarMensaje("Retencion reenviada", "ok");
   renderTabla();
@@ -574,11 +644,11 @@ function reenviar(id) {
 // DETALLE MODAL FACTURAS
 // =============================================
 function verDetalle(id) {
-  var f = facturas.find(function (x) { return x.id === id; });
+  var f = facturas.find(function(x) { return x.id === id; });
   if (!f) return;
-  document.getElementById("detalle-nro").textContent = f.nro;
+  document.getElementById("detalle-nro").textContent       = f.nro;
   document.getElementById("detalle-proveedor").textContent = f.proveedor;
-  document.getElementById("detalle-motivo").textContent = f.motivo || "Sin descripcion";
+  document.getElementById("detalle-motivo").textContent    = f.motivo || "Sin descripcion";
   document.getElementById("overlay-detalle").style.display = "flex";
 }
 
@@ -602,6 +672,7 @@ function obtenerMesFactura(fecha) {
 function renderTabla() {
   var buscar = document.getElementById("filtro-buscar").value.toLowerCase();
   var mesFiltro = document.getElementById("filtro-mes").value;
+  var soloConOrden = document.getElementById("filtro-con-orden").checked;
   var tbody = document.getElementById("cuerpo-tabla");
   var html = "", encontrados = 0;
   for (var i = 0; i < facturas.length; i++) {
@@ -609,35 +680,31 @@ function renderTabla() {
     if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
     if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
+    if (soloConOrden && !f.compra) continue;
     encontrados++;
-    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.aplicaRetencion;
-    var checked = seleccionados.indexOf(f.id) !== -1 ? "checked" : "";
+    // Bloquear selección si la factura NO tiene orden de pago asignada
+    var tieneOrdenPago = !!f.compra;
+    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && tieneOrdenPago;
+    var checked  = seleccionados.indexOf(f.id) !== -1 ? "checked" : "";
     var disabled = !puedeSel ? "disabled" : "";
+    // Celda de orden de pago con aviso visual cuando no tiene
+    var ordenPagoHtml = tieneOrdenPago
+      ? "<span style='font-family:monospace;font-size:11px'>" + f.compra + "</span>"
+      : "<span style='display:inline-flex;align-items:center;gap:4px;color:#a32d2d;font-size:11px;font-weight:600' " +
+        "title='Esta factura no tiene orden de pago asignada. No se puede procesar la retención hasta que se genere una.'>" +
+        "⚠ Sin orden</span>";
+    // Mostrar el desglose: monto total (IVA incluido), IVA, retención
+    var impuesto = (f.montoImpuesto || 0) + (f.montoImpuesto5 || 0);
+    var montoTotal = f.monto + impuesto; // f.monto = base sin IVA
     var montoHtml = f.esUSD
-      ? "USD " + formatearUSD(f.monto) + "<div style='font-size:10px;color:#888'>TC: " + formatearNumero(f.tipoCambio) + "</div>"
-      : "Gs. " + formatearNumero(f.monto);
+      ? "USD " + formatearUSD(montoTotal) + "<div style='font-size:10px;color:#888'>TC: " + formatearNumero(f.tipoCambio) + "</div>"
+      : "Gs. " + formatearNumero(montoTotal);
+    var ivaHtml = f.esUSD
+      ? "USD " + formatearUSD(impuesto)
+      : "Gs. " + formatearNumero(impuesto);
     var retHtml = f.esUSD
       ? "USD " + formatearUSD(f.retUSD) + "<div style='font-size:10px;color:#888'>Gs. " + formatearNumero(f.retGS) + "</div>"
       : "Gs. " + formatearNumero(f.retGS);
-    var minimoHtml = "";
-    if (f.formaPago === "C") {
-      // CONTADO: evaluar por proveedor+fecha
-      var colorI = f.aplicaRetencion ? "#2d7a0e" : "#a32d2d";
-      var tituloI = f.aplicaRetencion
-        ? "Contado — Total proveedor/fecha: Gs. " + formatearNumero(f.totalCompra) + " — Supera el minimo"
-        : "Contado — Total proveedor/fecha: Gs. " + formatearNumero(f.totalCompra) + " — No alcanza el minimo";
-      minimoHtml = "<span style='display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:" + colorI + ";color:white;font-size:10px;font-weight:bold;cursor:help;flex-shrink:0' title='" + tituloI + "'>C</span>";
-    } else if (f.compra) {
-      // CREDITO con OP: evaluar por OP
-      var colorI = f.aplicaRetencion ? "#2d7a0e" : "#a32d2d";
-      var tituloI = f.aplicaRetencion
-        ? "Credito — Total OP " + f.compra + ": Gs. " + formatearNumero(f.totalCompra) + " — Supera el minimo"
-        : "Credito — Total OP " + f.compra + ": Gs. " + formatearNumero(f.totalCompra) + " — No alcanza el minimo";
-      minimoHtml = "<span style='display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:" + colorI + ";color:white;font-size:10px;font-weight:bold;cursor:help;flex-shrink:0' title='" + tituloI + "'>E</span>";
-    } else {
-      // CREDITO sin OP: pendiente de pago
-      minimoHtml = "<span style='display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#e07b00;color:white;font-size:10px;font-weight:bold;cursor:help;flex-shrink:0' title='Credito sin OP — pendiente de pago, no retener aun'>!</span>";
-    }
     var btnAccion = "";
     if (f.estado === "RECHAZADO") {
       btnAccion = "<button class='btn-reenviar' onclick='reenviar(" + f.id + ")' style='margin-bottom:4px;display:block'>Reenviar</button>" +
@@ -648,10 +715,11 @@ function renderTabla() {
       "<td><input type='checkbox' " + checked + " " + disabled + " onchange='toggleSeleccion(" + f.id + ", this)'></td>" +
       "<td style='font-family:monospace;font-size:11px'>" + f.nro + "</td>" +
       "<td><strong>" + f.proveedor + "</strong><div style='font-size:10px;color:#888'>" + f.ruc + "</div></td>" +
-      "<td style='font-family:monospace;font-size:11px'>" + (f.compra || "—") + "</td>" +
+      "<td>" + ordenPagoHtml + "</td>" +
       "<td>" + f.moneda + "</td>" +
       "<td class='der'>" + montoHtml + "</td>" +
-      "<td class='der'><div style='display:flex;align-items:center;justify-content:flex-end;gap:4px'><strong>" + retHtml + "</strong>" + minimoHtml + "</div></td>" +
+      "<td class='der' style='color:#666'>" + ivaHtml + "</td>" +
+      "<td class='der'><strong>" + retHtml + "</strong></td>" +
       "<td style='font-size:11px'>" + fechaEmision + "</td>" +
       "<td>" + generarBadge(f.estado) + "</td>" +
       "<td>" + btnAccion + "</td>" +
@@ -665,44 +733,57 @@ function renderTabla() {
 
 function generarBadge(estado) {
   if (estado === "PENDIENTE_AUTH") return "<span class='badge badge-sinauth'>Sin autorizacion</span>";
-  if (estado === "PENDIENTE") return "<span class='badge badge-pendiente'>Pendiente de aprobacion</span>";
-  if (estado === "PROCESADO") return "<span class='badge badge-procesado'>Procesado</span>";
-  if (estado === "RECHAZADO") return "<span class='badge badge-rechazado'>Rechazado</span>";
-  if (estado === "ANULADO") return "<span class='badge badge-anulado'>Anulado</span>";
+  if (estado === "PENDIENTE")      return "<span class='badge badge-pendiente'>Pendiente de envio</span>";
+  if (estado === "PROCESADO")      return "<span class='badge badge-procesado'>Procesado</span>";
+  if (estado === "RECHAZADO")      return "<span class='badge badge-rechazado'>Rechazado</span>";
+  if (estado === "ANULADO")        return "<span class='badge badge-anulado'>Anulado</span>";
   return estado;
 }
 
 function actualizarStats() {
   var sinauth = 0, pendiente = 0, procesado = 0, rechazado = 0;
+  var conOrden = 0, sinOrden = 0;
   for (var i = 0; i < facturas.length; i++) {
-    if (facturas[i].estado === "PENDIENTE_AUTH") sinauth++;
-    if (facturas[i].estado === "PENDIENTE") pendiente++;
-    if (facturas[i].estado === "PROCESADO") procesado++;
-    if (facturas[i].estado === "RECHAZADO") rechazado++;
+    var f = facturas[i];
+    if (f.estado === "PENDIENTE_AUTH") sinauth++;
+    if (f.estado === "PENDIENTE")      pendiente++;
+    if (f.estado === "PROCESADO")      procesado++;
+    if (f.estado === "RECHAZADO")      rechazado++;
+    // Desglose de pendientes por orden de pago
+    if (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") {
+      if (f.compra) conOrden++;
+      else sinOrden++;
+    }
   }
   var elTotal = document.getElementById("stat-total");
   var elPendiente = document.getElementById("stat-pendiente");
+  var elConOrden = document.getElementById("stat-con-orden");
+  var elSinOrden = document.getElementById("stat-sin-orden");
   if (elTotal) elTotal.textContent = facturas.length;
   if (elPendiente) elPendiente.textContent = pendiente;
+  if (elConOrden) elConOrden.textContent = conOrden;
+  if (elSinOrden) elSinOrden.textContent = sinOrden;
 }
 
 function toggleSeleccion(id, checkbox) {
   if (checkbox.checked) { seleccionados.push(id); }
-  else { seleccionados = seleccionados.filter(function (x) { return x !== id; }); }
+  else { seleccionados = seleccionados.filter(function(x) { return x !== id; }); }
   actualizarInfoSeleccion();
 }
 function seleccionarTodas() {
   seleccionados = [];
   var buscar = document.getElementById("filtro-buscar").value.toLowerCase();
   var mesFiltro = document.getElementById("filtro-mes").value;
+  var soloConOrden = document.getElementById("filtro-con-orden").checked;
   for (var i = 0; i < facturas.length; i++) {
     var f = facturas[i];
     // Respetar filtros activos
     if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
     if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
-    // Seleccionar todas las pendientes visibles
-    if (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") {
+    if (soloConOrden && !f.compra) continue;
+    // Seleccionar todas las pendientes visibles CON orden de pago
+    if ((f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.compra) {
       seleccionados.push(f.id);
     }
   }
@@ -721,15 +802,101 @@ function cambiarPestana(nombre, elemento) {
   elemento.classList.add("activa");
   renderTabla();
 }
+// =============================================
+// SISTEMA DE NOTIFICACIONES (TOASTS)
+// =============================================
+var toastContador = 0;
+
+/**
+ * Muestra un toast profesional con icono y auto-dismiss.
+ * Tipos: "ok", "error", "info", "warning"
+ */
 function mostrarMensaje(texto, tipo) {
-  var el = document.getElementById("mensaje");
-  el.textContent = texto;
-  el.className = "mensaje " + tipo;
-  setTimeout(function () { el.className = "mensaje oculto"; }, 4000);
+  tipo = tipo || "info";
+  var iconos = { ok: "✓", error: "✕", info: "ℹ", warning: "⚠" };
+  var colores = {
+    ok:      { bg: "#ecfdf5", border: "#10b981", text: "#065f46", icon: "#10b981" },
+    error:   { bg: "#fef2f2", border: "#ef4444", text: "#991b1b", icon: "#ef4444" },
+    info:    { bg: "#eff6ff", border: "#3b82f6", text: "#1e40af", icon: "#3b82f6" },
+    warning: { bg: "#fffbeb", border: "#f59e0b", text: "#92400e", icon: "#f59e0b" }
+  };
+  var c = colores[tipo] || colores.info;
+  var id = "toast-" + (++toastContador);
+
+  // Crear contenedor si no existe
+  var contenedor = document.getElementById("toast-container");
+  if (!contenedor) {
+    contenedor = document.createElement("div");
+    contenedor.id = "toast-container";
+    contenedor.style.cssText = "position:fixed;top:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;max-width:420px;";
+    document.body.appendChild(contenedor);
+  }
+
+  var toast = document.createElement("div");
+  toast.id = id;
+  toast.style.cssText = "display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-radius:8px;" +
+    "background:" + c.bg + ";border-left:4px solid " + c.border + ";color:" + c.text + ";" +
+    "font-size:13px;line-height:1.4;box-shadow:0 4px 12px rgba(0,0,0,0.15);" +
+    "transform:translateX(120%);transition:transform 0.3s ease,opacity 0.3s ease;opacity:0;cursor:pointer;";
+  toast.innerHTML =
+    "<span style='font-size:18px;color:" + c.icon + ";flex-shrink:0;line-height:1'>" + iconos[tipo] + "</span>" +
+    "<span style='flex:1'>" + texto + "</span>" +
+    "<span style='color:#999;font-size:16px;margin-left:8px;cursor:pointer' onclick='cerrarToast(\"" + id + "\")'>×</span>";
+  toast.onclick = function() { cerrarToast(id); };
+
+  contenedor.appendChild(toast);
+  // Animate in
+  requestAnimationFrame(function() {
+    toast.style.transform = "translateX(0)";
+    toast.style.opacity = "1";
+  });
+
+  // Auto-dismiss
+  var duracion = tipo === "error" ? 8000 : 4000;
+  setTimeout(function() { cerrarToast(id); }, duracion);
+}
+
+function cerrarToast(id) {
+  var toast = document.getElementById(id);
+  if (!toast) return;
+  toast.style.transform = "translateX(120%)";
+  toast.style.opacity = "0";
+  setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
 }
 
 /**
- * Devuelve fecha y hora local en formato: DD-MM-AAAA HH:MM
+ * Muestra un diálogo de confirmación profesional (reemplaza confirm() nativo).
+ * Devuelve una Promise que resuelve a true/false.
+ */
+function confirmar(titulo, mensaje, textoSi, textoNo) {
+  textoSi = textoSi || "Confirmar";
+  textoNo = textoNo || "Cancelar";
+  return new Promise(function(resolve) {
+    var overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);" +
+      "display:flex;align-items:center;justify-content:center;z-index:10001;animation:fadeIn .2s ease;";
+    overlay.innerHTML =
+      "<div style='background:#fff;border-radius:12px;padding:28px 32px;max-width:400px;width:90%;" +
+      "box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideUp .25s ease'>" +
+        "<h3 style='margin:0 0 8px;font-size:16px;color:#1a1a1a'>" + titulo + "</h3>" +
+        "<p style='margin:0 0 24px;color:#666;font-size:13px;line-height:1.5'>" + mensaje + "</p>" +
+        "<div style='display:flex;gap:10px;justify-content:flex-end'>" +
+          "<button id='confirm-no' style='padding:8px 20px;border:1px solid #ddd;background:#fff;" +
+            "border-radius:6px;cursor:pointer;font-size:13px;color:#555'>" + textoNo + "</button>" +
+          "<button id='confirm-si' style='padding:8px 20px;border:none;background:#2d7a0e;color:#fff;" +
+            "border-radius:6px;cursor:pointer;font-size:13px;font-weight:600'>" + textoSi + "</button>" +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(overlay);
+    overlay.querySelector("#confirm-si").onclick = function() { document.body.removeChild(overlay); resolve(true); };
+    overlay.querySelector("#confirm-no").onclick = function() { document.body.removeChild(overlay); resolve(false); };
+    overlay.querySelector("#confirm-si").focus();
+  });
+}
+
+/**
+ * Devuelve fecha y hora local en formato: AAAA-MM-DD HH:MM:SS
+ * (formato exigido por Tesaka — antes generaba DD-MM-AAAA y era rechazado)
  */
 function getFechaHoraLocal() {
     const ahora = new Date();
@@ -745,7 +912,42 @@ function getFechaHoraLocal() {
     return `${anio}-${mes}-${dia} ${horas}:${minutos}:${segundos}`;
 }
 
-//descarga txt cuyo contenido es un arreglo de json, cada elemento del arreglo es una factura a enviar a SIFEN por TESAKA
+/**
+ * Fecha local AAAA-MM-DD. Reemplaza a toISOString().split('T')[0],
+ * que usa UTC y en Paraguay (UTC-3/-4) desplaza la fecha de noche.
+ */
+function getFechaLocal() {
+    const ahora = new Date();
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    return `${ahora.getFullYear()}-${mes}-${dia}`;
+}
+
+/**
+ * Formatea el número de comprobante a XXX-XXX-XXXXXXX (formato exigido por Tesaka).
+ * Acepta "0010020012152", "001-002-0012152", "1-2-12152", etc.
+ */
+function formatearComprobante(numero) {
+  if (!numero) return "";
+  var s = String(numero).trim();
+
+  // Ya viene con guiones: normalizar padding de cada grupo
+  var partes = s.split("-");
+  if (partes.length === 3) {
+    return partes[0].padStart(3, "0") + "-" +
+           partes[1].padStart(3, "0") + "-" +
+           partes[2].padStart(7, "0");
+  }
+
+  // Solo dígitos: 3 (establecimiento) + 3 (punto exp.) + resto (hasta 7)
+  var limpio = s.replace(/\D/g, "");
+  if (limpio.length >= 7 && limpio.length <= 13) {
+    return limpio.slice(0, 3) + "-" + limpio.slice(3, 6) + "-" +
+           limpio.slice(6).padStart(7, "0");
+  }
+  return s; // formato no reconocido: la validación lo reportará
+}
+
 /** Conceptos de renta válidos según la situación del informado (Ley 6380/2019) */
 var CONCEPTOS_RENTA = {
   "CONTRIBUYENTE":    "RENTA_EMPRESARIAL_REGISTRADO.1",
@@ -753,7 +955,91 @@ var CONCEPTOS_RENTA = {
   "NO_RESIDENTE":     "RENTA_NO_RESIDENTE.10"
 };
 
+/**
+ * CONFIGURACIÓN DE RETENCIÓN — ⚠️ CONFIRMAR CON EL CONTADOR ⚠️
+ *
+ * El sistema calcula la retención como impuesto × 30% (SOLO IVA).
+ * Por coherencia, retenerRenta debe ser false: si fuera true, Tesaka
+ * emitiría un comprobante que ADEMÁS retiene renta sobre la base
+ * (un monto mucho mayor al registrado en este sistema).
+ *
+ * Si DUTRIEC también debe retener renta, cambiar retenerRenta a true,
+ * ajustar rentaPorcentaje al valor que indique el contador, y actualizar
+ * el cálculo en FacturaController.enviarLote() para incluirla.
+ */
+var RETENCION_CONFIG = {
+  retenerIva: true,
+  ivaPorcentaje10: 30,
+  ivaPorcentaje5: 30,
+  retenerRenta: false,
+  rentaPorcentaje: 0
+};
 
+/**
+ * Calcula el dígito verificador de un RUC paraguayo (algoritmo módulo 11 de la SET).
+ * Ej: calcularDvRuc("80009651") → "7"
+ * Se usa cuando el RUC viene de la base sin el DV (antes se defaulteaba a "0"
+ * y Tesaka lo rechazaba con "El Dígito Verificador del informado no es correcto").
+ */
+function calcularDvRuc(ruc) {
+  var digitos = String(ruc).replace(/\D/g, "");
+  if (!digitos) return "";
+  var k = 2, total = 0;
+  for (var i = digitos.length - 1; i >= 0; i--) {
+    total += parseInt(digitos.charAt(i), 10) * k;
+    k++;
+    if (k > 11) k = 2;
+  }
+  var resto = total % 11;
+  return String(resto > 1 ? 11 - resto : 0);
+}
+
+/**
+ * Valida un objeto retención con las reglas del validador real de Tesaka.
+ * Devuelve un array de errores (vacío = válido).
+ */
+function validarRetencionTesaka(o, etiqueta) {
+  var errores = [];
+  var pref = etiqueta + ": ";
+  var t = o.transaccion, ret = o.retencion, inf = o.informado;
+
+  if (!/^\d{3}-\d{3}-\d{1,7}$/.test(t.numeroComprobanteVenta)) {
+    errores.push(pref + "N° de comprobante inválido \"" + t.numeroComprobanteVenta +
+                 "\" (formato 999-999-9999999)");
+  }
+
+  if (inf.situacion === "CONTRIBUYENTE" && [1, 5, 11].indexOf(t.tipoComprobante) !== -1) {
+    if (!/^\d{8}$/.test(t.numeroTimbrado)) {
+      errores.push(pref + "Timbrado inválido \"" + t.numeroTimbrado +
+                   "\" (debe tener 8 dígitos — cargar el timbrado del proveedor)");
+    }
+  }
+
+  if (t.condicionCompra === "CREDITO" && (!t.cuotas || t.cuotas < 1)) {
+    errores.push(pref + "cuotas debe ser mayor a 0 con condición CREDITO");
+  }
+
+  if (inf.situacion === "CONTRIBUYENTE" && inf.pais !== "") {
+    errores.push(pref + "pais debe ir vacío para CONTRIBUYENTE");
+  }
+
+  if (ret.retencionRenta && inf.situacion === "CONTRIBUYENTE" &&
+      ret.conceptoRenta.indexOf("COMERCIAL_INDUSTRIAL_SERVICIOS.") === 0) {
+    errores.push(pref + "conceptoRenta inválido para CONTRIBUYENTE (usar RENTA_EMPRESARIAL_REGISTRADO.1)");
+  }
+
+  if (ret.moneda !== "PYG" && (!ret.tipoCambio || ret.tipoCambio <= 1)) {
+    errores.push(pref + "tipoCambio sospechoso (" + ret.tipoCambio +
+                 ") para moneda " + ret.moneda + " — cargar cotización real");
+  }
+  if (ret.moneda === "PYG" && typeof ret.tipoCambio !== "undefined") {
+    errores.push(pref + "tipoCambio no debe enviarse cuando la moneda es PYG");
+  }
+
+  return errores;
+}
+
+//descarga txt cuyo contenido es un arreglo de json, cada elemento del arreglo es una factura a enviar a SIFEN por TESAKA
 function descargarTxt() {
   // Usar seleccionados si hay, sino todos los visibles
   var datos;
@@ -797,12 +1083,18 @@ function descargarTxt() {
         }
       }
 
-      // Determinar la tasa del IVA que aplica al detalle de la retención
-      var tasaDetalle = "10"; 
-      if (r.ivaPorcentaje5 > 0) {
-        tasaDetalle = "5";
-      } else if (r.baseImponible === 0 || (!r.ivaPorcentaje10 && !r.ivaPorcentaje5)) {
-        tasaDetalle = "0";
+      // Determinar la tasa del IVA que aplica al detalle de la retención.
+      // FIX Bug tasa: r.ivaPorcentaje10 no viene del dashboard, era una comparación
+      // que siempre daba false y todo caía en "0" (exento). Ahora se usa montoRetencion:
+      // si hay retención calculada, hubo IVA (la retención es SOLO sobre el impuesto).
+      // Para distinguir 10% vs 5% se usa el ratio retencion/base ≈ 2.72% para 10%
+      // (10/11 * 30%) vs ≈ 1.30% para 5% (5/21 * 30%).
+      var tasaDetalle = "0"; // exento por defecto
+      var montoRet = Number(r.montoRetencion) || 0;
+      var baseImp = Number(r.baseImponible) || 0;
+      if (montoRet > 0 && baseImp > 0) {
+        var ratio = montoRet / baseImp;
+        tasaDetalle = ratio > 0.02 ? "10" : "5"; // 10% da ~2.72%, 5% da ~1.30%
       }
 
       // Situación del informado (por ahora fijo; cuando manejen autofacturas
@@ -816,7 +1108,39 @@ function descargarTxt() {
       // Condición y cuotas de la COMPRA original (no de la retención).
       // CREDITO exige cuotas > 0; si no se conoce la condición real, usar CONTADO.
       var condicion = r.condicionCompra === "CREDITO" ? "CREDITO" : "CONTADO";
+
+      // ⚠ REGLA FISCAL IMPORTANTE (evita multa de Gs. 50.000):
+      // Si la condición es CONTADO y la factura tiene MÁS DE 7 DÍAS,
+      // la DNIT multa por comunicación tardía de retención. En CRÉDITO
+      // la fecha no importa. Por eso, si detectamos que la fecha del
+      // comprobante es vieja, forzamos CREDITO automáticamente.
+      var fechaComprobante = r.fechaFactura
+        ? new Date(String(r.fechaFactura).substring(0, 10))
+        : (r.fechaEnvio ? new Date(String(r.fechaEnvio).substring(0, 10)) : null);
+      if (condicion === "CONTADO" && fechaComprobante && !isNaN(fechaComprobante)) {
+        var hoy = new Date();
+        var diasTranscurridos = Math.floor((hoy - fechaComprobante) / (1000 * 60 * 60 * 24));
+        if (diasTranscurridos > 7) {
+          condicion = "CREDITO";
+          console.info("Factura " + nroComprobante + " tiene " + diasTranscurridos +
+            " días — forzada a CRÉDITO para evitar multa por comunicación tardía");
+        }
+      }
+
       var cuotas = condicion === "CREDITO" ? (Number(r.cuotas) || 1) : 0;
+
+      // FIX Bug precioUnitario: la especificación exige que para importes
+      // gravados el precio sea IVA INCLUIDO (Tesaka calcula base = precio/11).
+      // baseImponible viene SIN IVA de MariaDB, así que derivamos el impuesto
+      // desde el monto de retención: impuesto = retencion / (ivaPct/100).
+      var precioIvaIncluido = Number(r.baseImponible) || 0;
+      if (tasaDetalle === "10" || tasaDetalle === "5") {
+        var pctAplicado = tasaDetalle === "10"
+          ? RETENCION_CONFIG.ivaPorcentaje10 : RETENCION_CONFIG.ivaPorcentaje5;
+        var impuestoDerivado = pctAplicado > 0
+          ? (Number(r.montoRetencion) || 0) / (pctAplicado / 100) : 0;
+        precioIvaIncluido = Math.round((precioIvaIncluido + impuestoDerivado) * 100) / 100;
+      }
 
       // Estructuramos el objeto respetando el formato de Importación de Tesaka
       var objetoRetencion = {
@@ -834,7 +1158,7 @@ function descargarTxt() {
           "tipoIdentificacion": esContribuyente ? "" : (r.tipoIdentificacion || "CEDULA"),
           "identificacion":     esContribuyente ? "" : (r.identificacion || ""),
           "nombre": r.razonSocial || "---",
-          "domicilio": esContribuyente ? (r.domicilioProveedor || "Domicilio Fiscal") : "",
+          "domicilio": esContribuyente ? (r.direccionProveedor || "Domicilio Fiscal") : "",
           "direccion":         esContribuyente ? "" : (r.direccionProveedor || ""),
           "correoElectronico": esContribuyente ? "" : (r.correoProveedor || ""),
           "telefono":          esContribuyente ? "" : (r.telefonoProveedor || ""),
@@ -847,35 +1171,46 @@ function descargarTxt() {
           "cuotas": cuotas,
           "tipoComprobante": 1, // 1 = Factura estándar
           "numeroComprobanteVenta": nroComprobante,
-          "fecha": r.fechaEnvio ? String(r.fechaEnvio).substring(0, 10) : getFechaLocal(),
-          // FIX: el campo en retencionesDB es numTimbrado (r.timbrado no existía
-          // y siempre caía a "0", que Tesaka rechaza). Debe ser 8 dígitos reales.
-          "numeroTimbrado": String(r.numTimbrado || r.timbrado || "")
+          // FIX Bug fecha: usar la fecha de la FACTURA del proveedor
+          // (fechaFactura, nueva columna). fechaEnvio solo como fallback.
+          "fecha": r.fechaFactura ? String(r.fechaFactura).substring(0, 10)
+                 : (r.fechaEnvio ? String(r.fechaEnvio).substring(0, 10) : getFechaLocal()),
+          // FIX: el campo correcto es timbradoProveedor (timbrado de la factura
+          // del proveedor desde SQL Anywhere). numTimbrado era el timbrado de DUTRIEC
+          // que venía como "PENDIENTE_TIMBRADO" y Tesaka rechazaba.
+          "numeroTimbrado": String(r.timbradoProveedor || r.numTimbrado || r.timbrado || "")
         },
         "detalle": [
           {
             "cantidad": 1,
             "tasaAplica": tasaDetalle,
-            "precioUnitario": Number(r.baseImponible) || 0,
-            "descripcion": "Retención correspondiente a Comprobante de Venta Nro: " + (nroComprobante || "—")
+            "precioUnitario": precioIvaIncluido,
+            // Descripción: usa el concepto/comentario de la factura si existe.
+            // Fallback: referencia al comprobante.
+            "descripcion": r.concepto && String(r.concepto).trim() !== ""
+              ? String(r.concepto).trim().substring(0, 300)
+              : "Retención correspondiente a Comprobante de Venta Nro: " + (nroComprobante || "—")
           }
         ],
         "retencion": {
           "fecha": getFechaLocal(),
           "moneda": (r.moneda === "USD" || r.moneda === "DL") ? "USD" : "PYG",
-          "retencionRenta": true,
-          // Concepto según situación: para CONTRIBUYENTE Tesaka rechazó
-          // COMERCIAL_INDUSTRIAL_SERVICIOS.1 (ese código es de no contribuyentes)
-          "conceptoRenta": CONCEPTOS_RENTA[situacion],
-          "retencionIva": true,
-          "conceptoIva": "IVA.1",
-          "rentaPorcentaje": 10, // TODO: confirmar % con el contador según designación DNIT
+          // FIX Bug renta: el sistema calcula SOLO retención de IVA (impuesto × 30%).
+          // Antes se enviaba retencionRenta: true + rentaPorcentaje: 10, lo que hacía
+          // que Tesaka calcule ADEMÁS una retención de renta del 10% sobre la base —
+          // un monto mucho mayor al registrado en MariaDB.
+          // Configuración centralizada en RETENCION_CONFIG (arriba del archivo).
+          "retencionRenta": RETENCION_CONFIG.retenerRenta,
+          "conceptoRenta": RETENCION_CONFIG.retenerRenta ? CONCEPTOS_RENTA[situacion] : "",
+          "retencionIva": RETENCION_CONFIG.retenerIva,
+          "conceptoIva": RETENCION_CONFIG.retenerIva ? "IVA.1" : "",
+          "rentaPorcentaje": RETENCION_CONFIG.rentaPorcentaje,
           "rentaCabezasBase": 0,
           "rentaCabezasCantidad": 0,
           "rentaToneladasBase": 0,
           "rentaToneladasCantidad": 0,
-          "ivaPorcentaje5": r.ivaPorcentaje5 || 0,
-          "ivaPorcentaje10": 30 // Valor por defecto para DUTRIEC en retenciones IVA (30%)
+          "ivaPorcentaje5": tasaDetalle === "5" ? RETENCION_CONFIG.ivaPorcentaje5 : 0,
+          "ivaPorcentaje10": tasaDetalle === "10" ? RETENCION_CONFIG.ivaPorcentaje10 : 0
         }
       };
 
@@ -898,12 +1233,18 @@ function descargarTxt() {
     }
   });
 
-  // Si hubo filas inválidas, informar al usuario con el motivo exacto
+  // Si hubo filas inválidas, informar al usuario con toasts
   if (erroresValidacion.length > 0) {
     console.warn("Retenciones con errores (excluidas del archivo):");
     erroresValidacion.forEach(function(e) { console.warn("  " + e); });
-    mostrarMensaje(erroresValidacion.length + " retención/es con errores (ver consola): " +
-                   erroresValidacion[0], "error");
+    // Mostrar cada error como toast individual (máx 5 para no saturar)
+    var maxToasts = Math.min(erroresValidacion.length, 5);
+    for (var i = 0; i < maxToasts; i++) {
+      mostrarMensaje(erroresValidacion[i], "error");
+    }
+    if (erroresValidacion.length > 5) {
+      mostrarMensaje("... y " + (erroresValidacion.length - 5) + " errores más (ver consola F12)", "warning");
+    }
   }
 
   if (arregloJson.length === 0) {
@@ -941,37 +1282,37 @@ function actualizarEstadoEnviado(ids) {
   fetch(URL_API + "/retenciones/actualizar-estado", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: JSON.stringify({ 
       ids: ids.map(Number),
       estado: "ENVIADO"
     })
   })
-    .then(function (r) {
-      if (!r.ok) throw new Error("Error en actualización");
-      return r.json();
-    })
-    .then(function () {
-      mostrarMensaje("Estado actualizado a ENVIADO", "ok");
-      // === REFRESCO AUTOMÁTICO Y CAMBIO DE PESTAÑA ===
-      cargarDashboard();                    // recarga los datos
-      setTimeout(() => {
-        // Cambiar a la pestaña "Envios TESAKA"
-        var pestanaTesaka = document.querySelector('#vista-dashboard .pestana[onclick*="ENVIADO"]');
-        if (pestanaTesaka) {
-          cambiarPestanaDash('ENVIADO', pestanaTesaka);
-        } else {
-          // fallback: recargar dashboard y forzar render
-          renderDashboard();
-        }
-      }, 800);
-      seleccionadosDash = [];
-      actualizarInfoSelDash();
-    })
-    .catch(function (err) {
-      console.error(err);
-      mostrarMensaje("TXT descargado, pero no se pudo actualizar el estado", "error");
-      cargarDashboard(); // igual recargamos
-    });
+  .then(function(r) {
+    if (!r.ok) throw new Error("Error en actualización");
+    return r.json();
+  })
+  .then(function() {
+    mostrarMensaje("Estado actualizado a ENVIADO", "ok");
+    // === REFRESCO AUTOMÁTICO Y CAMBIO DE PESTAÑA ===
+    cargarDashboard();                    // recarga los datos
+    setTimeout(() => {
+      // Cambiar a la pestaña "Envios TESAKA"
+      var pestanaTesaka = document.querySelector('#vista-dashboard .pestana[onclick*="ENVIADO"]');
+      if (pestanaTesaka) {
+        cambiarPestanaDash('ENVIADO', pestanaTesaka);
+      } else {
+        // fallback: recargar dashboard y forzar render
+        renderDashboard();
+      }
+    }, 800);
+    seleccionadosDash = [];
+    actualizarInfoSelDash();
+  })
+  .catch(function(err) {
+    console.error(err);
+    mostrarMensaje("TXT descargado, pero no se pudo actualizar el estado", "error");
+    cargarDashboard(); // igual recargamos
+  });
 }
 
 function padR(str, len) {
@@ -990,7 +1331,7 @@ function toggleDropdown() {
 }
 
 // Cerrar dropdown al hacer click fuera
-document.addEventListener("click", function (e) {
+document.addEventListener("click", function(e) {
   var dropdown = document.querySelector(".dropdown-acciones");
   if (dropdown && !dropdown.contains(e.target)) {
     var menu = document.getElementById("dropdown-menu");
@@ -1012,12 +1353,12 @@ function verDetalles() {
 // =============================================
 
 function abrirRegistrarRespuesta(id) {
-  var r = retencionesDB.find(function (x) { return String(x.id) === String(id); });
+  var r = retencionesDB.find(function(x) { return String(x.id) === String(id); });
   if (!r) return;
 
   document.getElementById("reg-id").value = r.id;
   document.getElementById("reg-numcomprobante").value = r.numDocRet || "";
-
+  
   // Cargar valores ya guardados si existen
   document.getElementById("reg-estado").value = r.estadoSifen || "APROBADO";
   document.getElementById("reg-numcontrol").value = r.aprobacion_nro_control || "";
@@ -1054,23 +1395,23 @@ function guardarRespuestaModal() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   })
-    .then(function (r) {
-      if (!r.ok) {
-        return r.json().then(function (err) {
-          throw new Error(err.error || "Error del servidor");
-        });
-      }
-      return r.json();
-    })
-    .then(function (data) {
-      mostrarMensaje("Respuesta registrada exitosamente ✓", "ok");
-      cerrarRegistrarRespuesta();
-      cargarDashboard(); // Actualiza la tabla del dashboard
-    })
-    .catch(function (err) {
-      console.error(err);
-      mostrarMensaje("Error: " + err.message, "error");
-    });
+  .then(function(r) {
+    if (!r.ok) {
+      return r.json().then(function(err) {
+        throw new Error(err.error || "Error del servidor");
+      });
+    }
+    return r.json();
+  })
+  .then(function(data) {
+    mostrarMensaje("Respuesta registrada exitosamente ✓", "ok");
+    cerrarRegistrarRespuesta();
+    cargarDashboard(); // Actualiza la tabla del dashboard
+  })
+  .catch(function(err) {
+    console.error(err);
+    mostrarMensaje("Error: " + err.message, "error");
+  });
 }
 
 /*TODO. borrar, duplicado
@@ -1083,7 +1424,7 @@ function guardarRespuestaRetencion() {
   var comentario = document.getElementById("reg-comentario").value.trim();
 
   if (!nroComprobante) {
-    alert("Error: No se ha especificado el Número de Comprobante.");
+    mostrarMensaje("Especificá el Número de Comprobante.", "warning");
     return;
   }
 
@@ -1112,7 +1453,7 @@ function guardarRespuestaRetencion() {
     });
   })
   .then(function(data) {
-    alert("Respuesta procesada: " + data.mensaje);
+    mostrarMensaje("Respuesta guardada correctamente", "ok");
     cerrarRegistrarRespuesta(); // Cierra tu modal actual
     
     // Si tienes una función para recargar la grilla/dashboard, invócala aquí:
@@ -1124,7 +1465,7 @@ function guardarRespuestaRetencion() {
   })
   .catch(function(err) {
     console.error(err);
-    alert("Hubo un problema al guardar la respuesta: " + err.message);
+    mostrarMensaje("Error al guardar respuesta: " + err.message, "error");
   });
 }
 }*/
@@ -1139,13 +1480,16 @@ function verDetallesLinea(id) {
   document.getElementById("detalle-proveedor").textContent = r.razonSocial || "—";
   
   // Construimos una visualización detallada en formato texto/HTML
+  var esUSDdet = (r.moneda === "DL" || r.moneda === "USD");
+  var simDet = esUSDdet ? "USD " : "Gs. ";
+  var fmtDet = esUSDdet ? formatearUSD : formatearNumero;
+
   var detalleHtml = "<div style='line-height: 1.5; font-size: 12px; color: #333;'>" +
-    //
     "<strong>RUC:</strong> " + (r.rucProveedor || '—') + "<br/>" +
-    "<strong>Timbrado:</strong> " + (r.numTimbrado || '—') + "<br/>" +
+    "<strong>Timbrado:</strong> " + (r.timbradoProveedor || r.numTimbrado || '—') + "<br/>" +
     "<strong>Nº Factura Asociada:</strong> " + (r.nroFactura || '—') + "<br/>" +
-    "<strong>Base Imponible:</strong> Gs. " + formatearNumero(r.baseImponible) + "<br/>" +
-    "<strong>Monto Retención:</strong> Gs. " + formatearNumero(r.montoRetencion) + "<br/>" +
+    "<strong>Base Imponible:</strong> " + simDet + fmtDet(r.baseImponible) + "<br/>" +
+    "<strong>Monto Retención:</strong> " + simDet + fmtDet(r.montoRetencion) + "<br/>" +
     "<strong>Estado actual:</strong> " + r.estadoSifen + "<br/>" +
     "<strong>Número de control (Respuesta):</strong> " + (r.cdcProveedor || '—') + "<br/>" +
     //
@@ -1158,7 +1502,7 @@ function verDetallesLinea(id) {
   */
 
 function verDetallesLinea(id) {
-  var r = retencionesDB.find(function (x) { return String(x.id) === String(id); });
+  var r = retencionesDB.find(function(x) { return String(x.id) === String(id); });
   if (!r) return;
 
   document.getElementById("detalle-nro").textContent = r.numDocRet || "—";
@@ -1178,77 +1522,12 @@ function verDetallesLinea(id) {
   document.getElementById("overlay-detalle").style.display = "flex";
 }
 
-function getFechaLocal() {
-    const ahora = new Date();
-    const dia = String(ahora.getDate()).padStart(2, '0');
-    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-    return `${ahora.getFullYear()}-${mes}-${dia}`;
-}
-
-function validarRetencionTesaka(o, etiqueta) {
-  var errores = [];
-  var pref = etiqueta + ": ";
-  var t = o.transaccion, ret = o.retencion, inf = o.informado;
-
-  if (!/^\d{3}-\d{3}-\d{1,7}$/.test(t.numeroComprobanteVenta)) {
-    errores.push(pref + "N° de comprobante inválido \"" + t.numeroComprobanteVenta +
-                 "\" (formato 999-999-9999999)");
-  }
-
-  if (inf.situacion === "CONTRIBUYENTE" && [1, 5, 11].indexOf(t.tipoComprobante) !== -1) {
-    if (!/^\d{8}$/.test(t.numeroTimbrado)) {
-      errores.push(pref + "Timbrado inválido \"" + t.numeroTimbrado +
-                   "\" (debe tener 8 dígitos — cargar el timbrado del proveedor)");
-    }
-  }
-
-  if (t.condicionCompra === "CREDITO" && (!t.cuotas || t.cuotas < 1)) {
-    errores.push(pref + "cuotas debe ser mayor a 0 con condición CREDITO");
-  }
-
-  if (inf.situacion === "CONTRIBUYENTE" && inf.pais !== "") {
-    errores.push(pref + "pais debe ir vacío para CONTRIBUYENTE");
-  }
-
-  if (ret.retencionRenta && inf.situacion === "CONTRIBUYENTE" &&
-      ret.conceptoRenta.indexOf("COMERCIAL_INDUSTRIAL_SERVICIOS.") === 0) {
-    errores.push(pref + "conceptoRenta inválido para CONTRIBUYENTE (usar RENTA_EMPRESARIAL_REGISTRADO.1)");
-  }
-
-  if (ret.moneda !== "PYG" && (!ret.tipoCambio || ret.tipoCambio <= 1)) {
-    errores.push(pref + "tipoCambio sospechoso (" + ret.tipoCambio +
-                 ") para moneda " + ret.moneda + " — cargar cotización real");
-  }
-  if (ret.moneda === "PYG" && typeof ret.tipoCambio !== "undefined") {
-    errores.push(pref + "tipoCambio no debe enviarse cuando la moneda es PYG");
-  }
-
-  return errores;
-}
-
-function formatearComprobante(numero) {
-  if (!numero) return "";
-  var s = String(numero).trim();
-
-  // Ya viene con guiones: normalizar padding de cada grupo
-  var partes = s.split("-");
-  if (partes.length === 3) {
-    return partes[0].padStart(3, "0") + "-" +
-           partes[1].padStart(3, "0") + "-" +
-           partes[2].padStart(7, "0");
-  }
-
-  // Solo dígitos: 3 (establecimiento) + 3 (punto exp.) + resto (hasta 7)
-  var limpio = s.replace(/\D/g, "");
-  if (limpio.length >= 7 && limpio.length <= 13) {
-    return limpio.slice(0, 3) + "-" + limpio.slice(3, 6) + "-" +
-           limpio.slice(6).padStart(7, "0");
-  }
-  return s; // formato no reconocido: la validación lo reportará
-}
-
+// === NUEVA FUNCIÓN HELPER (agregada) ===
 function mostrarCheckboxesEnDash() {
   return pestanaDashActual === "todas" || pestanaDashActual === "PENDIENTE";
 }
 
-// Auto-refresh eliminado - usar boton Actualizar en la interfaz
+// Auto-refresh silencioso: facturas cada 60s, dashboard cada 120s.
+// El usuario no ve spinner ni parpadeo — solo se actualizan los datos.
+setInterval(function() { if (vistaActual === "facturas") cargarFacturas(); }, 60000);
+setInterval(function() { if (vistaActual === "dashboard") cargarDashboard(); }, 120000);
