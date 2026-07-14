@@ -133,6 +133,13 @@ function cargarFacturas() {
       facturas = datos.map(function(f) {
         var esUSD = (f.moneda === "DL" || f.moneda === "USD");
         var tc = f.factorCambio || 1;
+        if (esUSD) {
+          // Corrección: algunos registros en SQL Anywhere guardan el TC
+          // con decimales implícitos (ej: 613098 en vez de 6130.98).
+          // Si el TC supera 10.000, se asume que está multiplicado por 100.
+          if (tc > 10000) tc = tc / 100;
+          tc = Math.round(tc);
+        }
         var retUSD = 0, retGS = 0;
         if (esUSD) {
           retUSD = Math.round(((f.montoImpuesto || 0) * 0.30 + (f.montoImpuesto5 || 0) * 0.30) * 100) / 100;
@@ -148,7 +155,11 @@ function cargarFacturas() {
         return {
           id: f.factura, nro: f.facturaFisica || "—",
           proveedor: f.razonSocial || "Sin nombre", ruc: f.ruc || "",
-          compra: f.compra || null, moneda: f.moneda || "GS", tipoCambio: tc,
+          // Orden de pago: viene SOLO de ordenes_detalle (JOIN).
+          // fr.compra NO es confiable para esto — puede tener valores
+          // que no corresponden a una orden real en la tabla ordenes.
+          compra: f.ordenPago || null,
+          moneda: f.moneda || "GS", tipoCambio: tc,
           monto: (f.montoGravado || 0) + (f.montoGravado5 || 0) + (f.montoExento || 0),
           montoImpuesto: f.montoImpuesto || 0,
           montoImpuesto5: f.montoImpuesto5 || 0,
@@ -299,6 +310,7 @@ function renderDashboard() {
   var filtrados = retencionesDB.filter(function(r) {
     var matchEstado = pestanaDashActual === "todas" || r.estadoSifen === pestanaDashActual;
     var matchBuscar = !buscar ||
+      (r.ordenPago    && String(r.ordenPago).toLowerCase().indexOf(buscar) !== -1) ||
       (r.rucProveedor && r.rucProveedor.toLowerCase().indexOf(buscar) !== -1) ||
       (r.numDocRet    && r.numDocRet.toLowerCase().indexOf(buscar)    !== -1) ||
       (r.razonSocial  && r.razonSocial.toLowerCase().indexOf(buscar)  !== -1);
@@ -367,7 +379,7 @@ function renderDashboard() {
       "<td style='font-family:monospace;font-size:11px'>" + (r.timbradoProveedor || r.numTimbrado || "—") + "</td>" +
       "<td style='font-family:monospace;font-size:11px'>" + (r.nroFactura || "—") + "</td>" +
       "<td class='der'>" + simbolo + formatMonto(total) + "</td>" +
-      "<td class='der' style='color:#666'>" + simbolo + formatMonto(iva) + "</td>" +
+      "<td class='der'>" + simbolo + formatMonto(iva) + "</td>" +
       "<td class='der'><strong>" + simbolo + formatMonto(ret) + "</strong></td>" +
       "<td>" + tipoHtml + "</td>" +
       "<td>" + badgeDashboard(r.estadoSifen) + "</td>" +
@@ -523,16 +535,35 @@ function aprobarYEnviar() {
 
   // Validación: todas deben tener orden de pago asignada
   var sinOrden = seleccionados.filter(function(id) {
-    var f = facturas.find(function(x) { return x.id === id; });
+    var f = facturas.find(function(x) { return String
+      (x.id) === String (id); });
     return f && !f.compra;
   });
   if (sinOrden.length > 0) {
     var nombres = sinOrden.slice(0, 3).map(function(id) {
-      var f = facturas.find(function(x) { return x.id === id; });
+      var f = facturas.find(function(x) { return String(x.id) === String(id); });
       return f ? f.nro : "—";
     }).join(", ") + (sinOrden.length > 3 ? " y " + (sinOrden.length - 3) + " más" : "");
     mostrarMensaje(
       sinOrden.length + " factura/s sin orden de pago (" + nombres + "). Generá primero la orden de pago en el sistema.",
+      "error"
+    );
+    return;
+  }
+
+  // Validación: tipo de cambio en USD no puede superar 4 dígitos
+  var tcInvalido = seleccionados.filter(function(id) {
+    var f = facturas.find(function(x) { return x.id === id; });
+    return f && f.esUSD && (f.tipoCambio <= 0 || f.tipoCambio >= 10000);
+  });
+  if (tcInvalido.length > 0) {
+    var nros = tcInvalido.slice(0, 3).map(function(id) {
+      var f = facturas.find(function(x) { return x.id === id; });
+      return f ? f.nro + " (TC: " + f.tipoCambio + ")" : "—";
+    }).join(", ");
+    mostrarMensaje(
+      tcInvalido.length + " factura/s en USD con tipo de cambio inválido: " + nros +
+      ". El TC no puede superar los 4 dígitos (máximo 9.999). Verificá la cotización en el sistema.",
       "error"
     );
     return;
@@ -678,13 +709,15 @@ function renderTabla() {
   for (var i = 0; i < facturas.length; i++) {
     var f = facturas[i];
     if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
-    if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
+    if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1 && String(f.compra || "").indexOf(buscar) === -1 && (f.nro || "").indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
     if (soloConOrden && !f.compra) continue;
     encontrados++;
     // Bloquear selección si la factura NO tiene orden de pago asignada
     var tieneOrdenPago = !!f.compra;
-    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && tieneOrdenPago;
+    // Validar tipo de cambio en USD: no puede superar 4 dígitos (máx 9.999)
+    var tcValido = !f.esUSD || (f.tipoCambio > 0 && f.tipoCambio < 10000);
+    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && tieneOrdenPago && tcValido;
     var checked  = seleccionados.indexOf(f.id) !== -1 ? "checked" : "";
     var disabled = !puedeSel ? "disabled" : "";
     // Celda de orden de pago con aviso visual cuando no tiene
@@ -693,17 +726,23 @@ function renderTabla() {
       : "<span style='display:inline-flex;align-items:center;gap:4px;color:#a32d2d;font-size:11px;font-weight:600' " +
         "title='Esta factura no tiene orden de pago asignada. No se puede procesar la retención hasta que se genere una.'>" +
         "⚠ Sin orden</span>";
+    // Aviso de tipo de cambio inválido en facturas USD
+    var tcAviso = "";
+    if (f.esUSD && !tcValido) {
+      tcAviso = "<div style='font-size:10px;color:#a32d2d;font-weight:600' " +
+        "title='El tipo de cambio supera 4 dígitos. Verificar la cotización cargada en el sistema.'>⚠ TC inválido</div>";
+    }
     // Mostrar el desglose: monto total (IVA incluido), IVA, retención
     var impuesto = (f.montoImpuesto || 0) + (f.montoImpuesto5 || 0);
     var montoTotal = f.monto + impuesto; // f.monto = base sin IVA
     var montoHtml = f.esUSD
-      ? "USD " + formatearUSD(montoTotal) + "<div style='font-size:10px;color:#888'>TC: " + formatearNumero(f.tipoCambio) + "</div>"
+      ? "USD " + formatearUSD(montoTotal) + "<div style='font-size:10px;color:#444;font-weight:600'>TC: " + formatearNumero(f.tipoCambio) + "</div>" + tcAviso
       : "Gs. " + formatearNumero(montoTotal);
     var ivaHtml = f.esUSD
       ? "USD " + formatearUSD(impuesto)
       : "Gs. " + formatearNumero(impuesto);
     var retHtml = f.esUSD
-      ? "USD " + formatearUSD(f.retUSD) + "<div style='font-size:10px;color:#888'>Gs. " + formatearNumero(f.retGS) + "</div>"
+      ? "USD " + formatearUSD(f.retUSD) + "<div style='font-size:10px;color:#444;font-weight:600'>Gs. " + formatearNumero(f.retGS) + "</div>"
       : "Gs. " + formatearNumero(f.retGS);
     var btnAccion = "";
     if (f.estado === "RECHAZADO") {
@@ -718,7 +757,7 @@ function renderTabla() {
       "<td>" + ordenPagoHtml + "</td>" +
       "<td>" + f.moneda + "</td>" +
       "<td class='der'>" + montoHtml + "</td>" +
-      "<td class='der' style='color:#666'>" + ivaHtml + "</td>" +
+      "<td class='der'>" + ivaHtml + "</td>" +
       "<td class='der'><strong>" + retHtml + "</strong></td>" +
       "<td style='font-size:11px'>" + fechaEmision + "</td>" +
       "<td>" + generarBadge(f.estado) + "</td>" +
@@ -779,12 +818,14 @@ function seleccionarTodas() {
     var f = facturas[i];
     // Respetar filtros activos
     if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
-    if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1) continue;
+    if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1 && String(f.compra || "").indexOf(buscar) === -1 && (f.nro || "").indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
     if (soloConOrden && !f.compra) continue;
-    // Seleccionar todas las pendientes visibles CON orden de pago
+    // Seleccionar todas las pendientes visibles CON orden de pago y TC válido
     if ((f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.compra) {
-      seleccionados.push(f.id);
+      var esUSD = (f.moneda === "DL" || f.moneda === "USD");
+      var tcOk = !esUSD || (f.tipoCambio > 0 && f.tipoCambio < 10000);
+      if (tcOk) seleccionados.push(f.id);
     }
   }
   renderTabla();
@@ -1134,13 +1175,18 @@ function descargarTxt() {
       // baseImponible viene SIN IVA de MariaDB, así que derivamos el impuesto
       // desde el monto de retención: impuesto = retencion / (ivaPct/100).
       var precioIvaIncluido = Number(r.baseImponible) || 0;
+      var esUSDtxt = (r.moneda === "USD" || r.moneda === "DL");
       if (tasaDetalle === "10" || tasaDetalle === "5") {
         var pctAplicado = tasaDetalle === "10"
           ? RETENCION_CONFIG.ivaPorcentaje10 : RETENCION_CONFIG.ivaPorcentaje5;
         var impuestoDerivado = pctAplicado > 0
           ? (Number(r.montoRetencion) || 0) / (pctAplicado / 100) : 0;
-        precioIvaIncluido = Math.round((precioIvaIncluido + impuestoDerivado) * 100) / 100;
+        precioIvaIncluido = precioIvaIncluido + impuestoDerivado;
       }
+      // Redondeo: USD a 2 decimales, PYG a entero (sin decimales)
+      precioIvaIncluido = esUSDtxt
+        ? Math.round(precioIvaIncluido * 100) / 100
+        : Math.round(precioIvaIncluido);
 
       // Estructuramos el objeto respetando el formato de Importación de Tesaka
       var objetoRetencion = {

@@ -170,6 +170,66 @@ public class DashboardController {
         return ResponseEntity.ok(resp);
     }
 
+    // =========================================================================
+    // GET /retenciones/migrar-redondeo
+    // Redondea factor_cambio a entero en todos los registros de MariaDB.
+    // Tesaka exige tipoCambio como entero. También corrige factores de cambio
+    // sospechosos (> 100.000 o = 0) consultando la orden de pago en SQL Anywhere.
+    // =========================================================================
+    @GetMapping("/migrar-redondeo")
+    public ResponseEntity<?> migrarRedondeo() {
+        // Paso 1: redondear los que tienen decimales
+        int redondeados = mariaDb.update(
+            "UPDATE retenciones_enviadas " +
+            "SET factor_cambio = ROUND(factor_cambio) " +
+            "WHERE factor_cambio IS NOT NULL AND factor_cambio != ROUND(factor_cambio)"
+        );
+
+        // Paso 2: buscar los sospechosos (> 100.000 o = 0 en moneda DL/USD)
+        List<Map<String, Object>> sospechosos = mariaDb.queryForList(
+            "SELECT id, id_factura_orig, factor_cambio FROM retenciones_enviadas " +
+            "WHERE moneda IN ('DL', 'USD') " +
+            "  AND (factor_cambio IS NULL OR factor_cambio = 0 OR factor_cambio > 100000)"
+        );
+
+        int corregidos = 0;
+        List<String> errores = new ArrayList<>();
+        for (Map<String, Object> reg : sospechosos) {
+            Long idFactura = ((Number) reg.get("id_factura_orig")).longValue();
+            Long idRet = ((Number) reg.get("id")).longValue();
+            try {
+                // Buscar el TC de la orden de pago en SQL Anywhere
+                List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
+                    "SELECT o.factor_de_cambio " +
+                    "FROM ordenes_detalle od " +
+                    "JOIN ordenes o ON o.orden = od.orden " +
+                    "WHERE od.factura = ?",
+                    idFactura
+                );
+                if (!resultado.isEmpty() && resultado.get(0).get("factor_de_cambio") != null) {
+                    double tc = Double.parseDouble(resultado.get(0).get("factor_de_cambio").toString());
+                    long tcRedondeado = Math.round(tc);
+                    if (tcRedondeado > 0 && tcRedondeado < 100000) {
+                        mariaDb.update(
+                            "UPDATE retenciones_enviadas SET factor_cambio = ? WHERE id = ?",
+                            tcRedondeado, idRet
+                        );
+                        corregidos++;
+                    }
+                }
+            } catch (Exception e) {
+                errores.add("Factura " + idFactura + ": " + e.getMessage());
+            }
+        }
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("redondeados", redondeados);
+        resp.put("sospechosos_encontrados", sospechosos.size());
+        resp.put("corregidos_desde_ordenes", corregidos);
+        if (!errores.isEmpty()) resp.put("errores", errores);
+        return ResponseEntity.ok(resp);
+    }
+
     @GetMapping("/dashboard")
     public Map<String, Object> getDashboard() {
         Map<String, Object> respuesta = new HashMap<>();

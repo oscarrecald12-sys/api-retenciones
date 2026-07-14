@@ -28,9 +28,13 @@ public class FacturaRepository {
                 + "fr.monto_gravado, fr.monto_impuesto, "
                 + "fr.monto_gravado_5, fr.monto_impuesto_5, "
                 + "fr.monto_exento, fr.moneda, "
-                + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios "
+                + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios, "
+                // Número de orden de pago: viene de ordenes_detalle
+                // (una orden puede tener varias facturas del mismo proveedor)
+                + "od.orden AS orden_pago "
                 + "FROM facturas_recibidas fr "
                 + "JOIN personas p ON p.persona = fr.proveedor "
+                + "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura "
                 + "WHERE fr.estado = 'A' "
                 + "ORDER BY fr.fecha DESC";
 
@@ -54,9 +58,11 @@ public class FacturaRepository {
                 + "fr.monto_gravado, fr.monto_impuesto, "
                 + "fr.monto_gravado_5, fr.monto_impuesto_5, "
                 + "fr.monto_exento, fr.moneda, "
-                + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios "
+                + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios, "
+                + "od.orden AS orden_pago "
                 + "FROM facturas_recibidas fr "
                 + "JOIN personas p ON p.persona = fr.proveedor "
+                + "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura "
                 + "WHERE fr.factura = ?";
 
         List<Factura> lista = jdbc.query(sql,
@@ -80,6 +86,9 @@ public class FacturaRepository {
 
         long compraVal = rs.getLong("compra");
         f.setCompra(rs.wasNull() ? null : compraVal);
+
+        long ordenVal = rs.getLong("orden_pago");
+        f.setOrdenPago(rs.wasNull() ? null : ordenVal);
 
         f.setFormaPago(rs.getString("forma_pago"));
 

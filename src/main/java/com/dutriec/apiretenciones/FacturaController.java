@@ -140,8 +140,9 @@ public class FacturaController {
                     montoGravado,
                     retencion,
                     factura.getMoneda() != null ? factura.getMoneda() : "GS",
+                    // Redondear TC a entero (Tesaka exige entero para tipoCambio)
                     factura.getFactorCambio() != null && factura.getFactorCambio() > 0
-                        ? factura.getFactorCambio() : null,
+                        ? Math.round(factura.getFactorCambio()) : null,
                     timbrado,
                     factura.getTimbrado() != null ? factura.getTimbrado().trim() : "",
                     // FIX Bug fecha: guardar la fecha de la FACTURA del proveedor

@@ -17,6 +17,7 @@ public class Factura {
     private String timbrado;
     private String estado;
     private Long compra;
+    private Long ordenPago;    // Nro de orden de pago (de ordenes_detalle)
     private String formaPago; // C=Contado, E=Crédito
     private String comentarios; // Concepto/descripción de la factura
     private String correo;      // mail del proveedor (de personas)
@@ -29,6 +30,9 @@ public class Factura {
 
     public Long getCompra() { return compra; }
     public void setCompra(Long compra) { this.compra = compra; }
+
+    public Long getOrdenPago() { return ordenPago; }
+    public void setOrdenPago(Long ordenPago) { this.ordenPago = ordenPago; }
 
     public String getFormaPago() { return formaPago; }
     public void setFormaPago(String formaPago) { this.formaPago = formaPago; }

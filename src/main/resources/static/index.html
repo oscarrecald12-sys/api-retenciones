@@ -43,12 +43,12 @@
     <header class="header">
       <div class="header-izq">
         <h1 class="titulo">Retenciones SIFEN</h1>
-        <p class="subtitulo">Gestión y envío automático de comprobantes de retención · DUTRIEC S.A</p>
+        <p class="subtitulo">Gestión y envío automático de comprobantes de retención · DUTRIEC SA</p>
       </div>
       <div class="header-der" style="display:flex;align-items:center;gap:12px">
         <span class="header-usuario">&#128100; <span id="label-usuario"></span></span>
         <button class="btn-logout" onclick="doLogout()">Salir</button>
-       </div>
+      </div>
     </header>
 
     <div class="contenedor">
@@ -93,7 +93,7 @@
         <!-- FILTROS Y ACCIONES -->
         <div class="barra-acciones">
           <div class="filtros">
-            <input type="text" id="filtro-buscar" placeholder="Buscar proveedor o RUC..." oninput="renderTabla()">
+            <input type="text" id="filtro-buscar" placeholder="Buscar proveedor, RUC o Nº orden..." oninput="renderTabla()">
             <select id="filtro-mes" onchange="renderTabla()">
               <option value="">Todos los meses</option>
               <option value="01">Enero 2026</option>
@@ -218,7 +218,7 @@
                 <th>Tipo</th>
                 <th>Estado TESAKA</th>
                 <th>Fecha envío</th>
-                <th>Acciones</th>
+               <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="cuerpo-dashboard"></tbody>
@@ -365,7 +365,7 @@
     </div>
   </div>
 
-  <script src="js/retenciones.js?v=22"></script>
+  <script src="js/retenciones.js?v=25"></script>
 </body>
 
 </html>
