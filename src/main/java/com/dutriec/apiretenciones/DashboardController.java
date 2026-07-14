@@ -185,11 +185,12 @@ public class DashboardController {
             "WHERE factor_cambio IS NOT NULL AND factor_cambio != ROUND(factor_cambio)"
         );
 
-        // Paso 2: buscar los sospechosos (> 100.000 o = 0 en moneda DL/USD)
+        // Paso 2: buscar los sospechosos (> 10.000 o = 0 en moneda DL/USD)
+        // y corregirlos desde la FACTURA ORIGINAL (fr.factor_cambio), NO de la orden
         List<Map<String, Object>> sospechosos = mariaDb.queryForList(
             "SELECT id, id_factura_orig, factor_cambio FROM retenciones_enviadas " +
             "WHERE moneda IN ('DL', 'USD') " +
-            "  AND (factor_cambio IS NULL OR factor_cambio = 0 OR factor_cambio > 100000)"
+            "  AND (factor_cambio IS NULL OR factor_cambio = 0 OR factor_cambio > 10000)"
         );
 
         int corregidos = 0;
@@ -198,18 +199,17 @@ public class DashboardController {
             Long idFactura = ((Number) reg.get("id_factura_orig")).longValue();
             Long idRet = ((Number) reg.get("id")).longValue();
             try {
-                // Buscar el TC de la orden de pago en SQL Anywhere
+                // TC de la factura original en SQL Anywhere
                 List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
-                    "SELECT o.factor_de_cambio " +
-                    "FROM ordenes_detalle od " +
-                    "JOIN ordenes o ON o.orden = od.orden " +
-                    "WHERE od.factura = ?",
+                    "SELECT fr.factor_cambio FROM facturas_recibidas fr WHERE fr.factura = ?",
                     idFactura
                 );
-                if (!resultado.isEmpty() && resultado.get(0).get("factor_de_cambio") != null) {
-                    double tc = Double.parseDouble(resultado.get(0).get("factor_de_cambio").toString());
+                if (!resultado.isEmpty() && resultado.get(0).get("factor_cambio") != null) {
+                    double tc = Double.parseDouble(resultado.get(0).get("factor_cambio").toString());
+                    // Corrección: si > 10.000, SQL Anywhere lo guardó sin decimales
+                    if (tc > 10000) tc = tc / 100.0;
                     long tcRedondeado = Math.round(tc);
-                    if (tcRedondeado > 0 && tcRedondeado < 100000) {
+                    if (tcRedondeado > 0 && tcRedondeado < 10000) {
                         mariaDb.update(
                             "UPDATE retenciones_enviadas SET factor_cambio = ? WHERE id = ?",
                             tcRedondeado, idRet
@@ -226,6 +226,87 @@ public class DashboardController {
         resp.put("redondeados", redondeados);
         resp.put("sospechosos_encontrados", sospechosos.size());
         resp.put("corregidos_desde_ordenes", corregidos);
+        if (!errores.isEmpty()) resp.put("errores", errores);
+        return ResponseEntity.ok(resp);
+    }
+
+    // =========================================================================
+    // GET /retenciones/migrar-tc
+    // Fuerza la re-lectura del tipo de cambio de la FACTURA ORIGINAL
+    // (facturas_recibidas.factor_cambio) para TODOS los registros en USD/DL.
+    // Aplica la corrección: si > 10.000, divide por 100. Redondea a entero.
+    // =========================================================================
+    @GetMapping("/migrar-tc")
+    public ResponseEntity<?> migrarTipoCambio() {
+        List<Map<String, Object>> registrosUSD = mariaDb.queryForList(
+            "SELECT id, id_factura_orig, factor_cambio FROM retenciones_enviadas " +
+            "WHERE moneda IN ('DL', 'USD')"
+        );
+        int actualizados = 0;
+        List<String> detalle = new ArrayList<>();
+        for (Map<String, Object> reg : registrosUSD) {
+            Long idFactura = ((Number) reg.get("id_factura_orig")).longValue();
+            Long idRet = ((Number) reg.get("id")).longValue();
+            Object tcActual = reg.get("factor_cambio");
+            try {
+                List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
+                    "SELECT fr.factor_cambio FROM facturas_recibidas fr WHERE fr.factura = ?",
+                    idFactura
+                );
+                if (!resultado.isEmpty() && resultado.get(0).get("factor_cambio") != null) {
+                    double tcOriginal = Double.parseDouble(resultado.get(0).get("factor_cambio").toString());
+                    double tcCorregido = tcOriginal > 10000 ? tcOriginal / 100.0 : tcOriginal;
+                    long tcFinal = Math.round(tcCorregido);
+                    mariaDb.update(
+                        "UPDATE retenciones_enviadas SET factor_cambio = ? WHERE id = ?",
+                        tcFinal, idRet
+                    );
+                    detalle.add("Factura " + idFactura + ": " + tcActual + " → " + tcFinal +
+                        " (original: " + tcOriginal + ")");
+                    actualizados++;
+                }
+            } catch (Exception e) {
+                detalle.add("Factura " + idFactura + ": ERROR " + e.getMessage());
+            }
+        }
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("total_usd", registrosUSD.size());
+        resp.put("actualizados", actualizados);
+        resp.put("detalle", detalle);
+        return ResponseEntity.ok(resp);
+    }
+
+    // =========================================================================
+    // GET /retenciones/migrar-ordenes
+    // Completa la columna orden_pago de los registros existentes en MariaDB
+    // buscando en ordenes_detalle de SQL Anywhere.
+    // =========================================================================
+    @GetMapping("/migrar-ordenes")
+    public ResponseEntity<?> migrarOrdenes() {
+        List<Map<String, Object>> sinOrden = mariaDb.queryForList(
+            "SELECT id, id_factura_orig FROM retenciones_enviadas WHERE orden_pago IS NULL"
+        );
+        int actualizados = 0;
+        List<String> errores = new ArrayList<>();
+        for (Map<String, Object> reg : sinOrden) {
+            Long idFactura = ((Number) reg.get("id_factura_orig")).longValue();
+            Long idRet = ((Number) reg.get("id")).longValue();
+            try {
+                List<Map<String, Object>> resultado = sqlAnywhere.queryForList(
+                    "SELECT od.orden FROM ordenes_detalle od WHERE od.factura = ?", idFactura
+                );
+                if (!resultado.isEmpty() && resultado.get(0).get("orden") != null) {
+                    Long orden = ((Number) resultado.get(0).get("orden")).longValue();
+                    mariaDb.update("UPDATE retenciones_enviadas SET orden_pago = ? WHERE id = ?", orden, idRet);
+                    actualizados++;
+                }
+            } catch (Exception e) {
+                errores.add("Factura " + idFactura + ": " + e.getMessage());
+            }
+        }
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("total_sin_orden", sinOrden.size());
+        resp.put("actualizados", actualizados);
         if (!errores.isEmpty()) resp.put("errores", errores);
         return ResponseEntity.ok(resp);
     }
@@ -306,6 +387,7 @@ public class DashboardController {
             String sqlQuery = "SELECT " +
                 "  id, " +
                 "  id_factura_orig   AS idFacturaOrig, " +
+                "  orden_pago        AS ordenPago, " +
                 "  nro_comprobante   AS numDocRet, " +
                 "  ruc_proveedor     AS rucProveedor, " +
                 "  razon_social      AS razonSocial, " +
