@@ -374,10 +374,10 @@ function renderDashboard() {
 
     html +=
       "<td style='font-family:monospace;font-size:11px'>" + (r.numDocRet || "—") + "</td>" +
+      "<td style='font-family:monospace;font-size:11px'>" + (r.ordenPago || "—") + "</td>" +
       "<td style='font-size:11px'>" + (r.rucProveedor || "—") + "</td>" +
       "<td><strong style='font-size:12px'>" + (r.razonSocial && r.razonSocial.trim() !== "" && ["—","-","---","null","Sin nombre"].indexOf(r.razonSocial.trim()) === -1 ? r.razonSocial : "RUC " + (r.rucProveedor || "s/d")) + "</strong></td>" +
       "<td style='font-family:monospace;font-size:11px'>" + (r.timbradoProveedor || r.numTimbrado || "—") + "</td>" +
-      "<td style='font-family:monospace;font-size:11px'>" + (r.nroFactura || "—") + "</td>" +
       "<td class='der'>" + simbolo + formatMonto(total) + "</td>" +
       "<td class='der'>" + simbolo + formatMonto(iva) + "</td>" +
       "<td class='der'><strong>" + simbolo + formatMonto(ret) + "</strong></td>" +
@@ -1301,12 +1301,26 @@ function descargarTxt() {
   // Convertimos el arreglo completo a una cadena JSON con indentación limpia de 2 espacios
   var contenidoTxt = JSON.stringify(arregloJson, null, 2);
 
+  // Nombre del archivo: incluye proveedor y orden de pago para identificación
+  var primerIdSel = seleccionadosDash.length > 0 ? Number(seleccionadosDash[0]) : null;
+  var primerReg = primerIdSel !== null
+    ? retencionesDB.find(function(r) { return Number(r.id) === primerIdSel; })
+    : null;
+  var nombreProv = primerReg && primerReg.razonSocial
+    ? primerReg.razonSocial.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 30)
+    : "varios";
+  var nroOrden = primerReg && primerReg.ordenPago
+    ? "_OP" + primerReg.ordenPago
+    : "";
+  var cantProv = arregloJson.length > 1 ? "_" + arregloJson.length + "ret" : "";
+  var nombreArchivo = "retenciones_" + nombreProv + nroOrden + cantProv + "_" + getFechaLocal() + ".txt";
+
   // Crear el Blob y forzar la descarga del archivo plano .txt conteniendo el JSON
   var blob = new Blob([contenidoTxt], { type: "text/plain;charset=utf-8;" });
   var url = window.URL.createObjectURL(blob);
   var a = document.createElement("a");
   a.href = url;
-  a.download = "retenciones_" + new Date().toISOString().substring(0, 10) + ".txt";
+  a.download = nombreArchivo;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

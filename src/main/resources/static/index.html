@@ -190,7 +190,7 @@
         <!-- FILTROS Y ACCIONES DASHBOARD -->
         <div class="barra-acciones">
           <div class="filtros">
-            <input type="text" id="dash-filtro-ruc" placeholder="Buscar RUC o Nº doc..." oninput="filtrarDashboard()">
+            <input type="text" id="dash-filtro-ruc" placeholder="Buscar RUC, Nº doc, proveedor o Nº orden..." oninput="filtrarDashboard()">
             <button class="btn-azul" onclick="cargarDashboard()">&#8635; Actualizar</button>
           </div>
           <div class="acciones-sel">
@@ -208,10 +208,10 @@
               <tr>
                 <th style="width:36px"><input type="checkbox" id="dash-check-all" onchange="toggleTodosDash(this)"></th>
                 <th>Comprobante</th>
+                <th>Orden Pago</th>
                 <th>RUC Proveedor</th>
                 <th>Razón Social</th>
                 <th>Timbrado</th>
-                <th>Nº Factura</th>
                 <th class="der">Monto Total</th>
                 <th class="der">IVA</th>
                 <th class="der">Retención</th>
@@ -365,7 +365,7 @@
     </div>
   </div>
 
-  <script src="js/retenciones.js?v=25"></script>
+  <script src="js/retenciones.js?v=31"></script>
 </body>
 
 </html>

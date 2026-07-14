@@ -128,11 +128,12 @@ public class FacturaController {
                 //       migration_add_columns.sql incluido en este paquete de corrección.
                 mariaDb.update(
                     "INSERT INTO retenciones_enviadas " +
-                    "(id_factura_orig, nro_comprobante, ruc_proveedor, razon_social, concepto, " +
+                    "(id_factura_orig, orden_pago, nro_comprobante, ruc_proveedor, razon_social, concepto, " +
                     "monto, retencion, moneda, factor_cambio, estado, num_timbrado, timbrado_proveedor, " +
                     "fecha_factura, correo_proveedor, telefono_proveedor, direccion_proveedor, fecha_envio) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, NOW())",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, NOW())",
                     id,
+                    factura.getOrdenPago(),
                     factura.getFacturaFisica(),
                     ruc,
                     razonSocial,
@@ -140,9 +141,11 @@ public class FacturaController {
                     montoGravado,
                     retencion,
                     factura.getMoneda() != null ? factura.getMoneda() : "GS",
-                    // Redondear TC a entero (Tesaka exige entero para tipoCambio)
-                    factura.getFactorCambio() != null && factura.getFactorCambio() > 0
-                        ? Math.round(factura.getFactorCambio()) : null,
+                    // TC de la factura original, redondeado a entero.
+                    // Corrección: en SQL Anywhere algunos registros guardan el TC
+                    // sin punto decimal (ej: 613098 en vez de 6130.98).
+                    // Si supera 10.000, se asume ×100 y se divide.
+                    corregirTipoCambio(factura.getFactorCambio()),
                     timbrado,
                     factura.getTimbrado() != null ? factura.getTimbrado().trim() : "",
                     // FIX Bug fecha: guardar la fecha de la FACTURA del proveedor
@@ -171,4 +174,18 @@ public class FacturaController {
         return resultados;
     }
 
+    /**
+     * Corrige el tipo de cambio de la factura original:
+     * - Si viene > 10.000, se asume que SQL Anywhere lo guardó sin decimales
+     *   (ej: 613098 en vez de 6130.98) y se divide por 100.
+     * - Se redondea a entero (Tesaka exige tipoCambio entero).
+     * Ej: 613098 → 6130.98 → 6131
+     *     6400.00 → 6400
+     */
+    private Long corregirTipoCambio(Double tc) {
+        if (tc == null || tc <= 0) return null;
+        double valor = tc;
+        if (valor > 10000) valor = valor / 100.0;
+        return Math.round(valor);
+    }
 }
