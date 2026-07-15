@@ -13,26 +13,27 @@
   <!-- ====================================================
        PANTALLA LOGIN
   ==================================================== -->
-  <div id="pantalla-login">
-    <div class="login-card">
-      <div class="login-logo">
-        <div class="login-icon">&#128196;</div>
-        <div class="login-empresa">DUTRIEC SA</div>
-        <div class="login-sistema">Sistema de Retenciones SIFEN</div>
-        <div class="login-ruc">RUC 80015056-2</div>
-      </div>
-      <div class="login-campo">
-        <label>Usuario</label>
-        <input type="text" id="login-usuario" placeholder="usuario" autocomplete="username" />
-      </div>
-      <div class="login-campo">
-        <label>Contraseña</label>
-        <input type="password" id="login-clave" placeholder="••••••••" autocomplete="current-password" />
-      </div>
-      <button class="btn-ingresar" onclick="doLogin()">Ingresar</button>
-      <div id="login-error" class="login-error"></div>
+ <!-- ==================================================== -->
+<div id="pantalla-login" class="login-background">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-icon"></div>
+      <div class="login-empresa">DUTRIEC S.A</div>
+      <div class="login-sistema">Sistema de Retenciones SIFEN</div>
+      <div class="login-ruc">RUC 80015056-2</div>
     </div>
+    <div class="login-campo">
+      <label>Usuario</label>
+      <input type="text" id="login-usuario" placeholder="usuario" autocomplete="username" />
+    </div>
+    <div class="login-campo">
+      <label>Contraseña</label>
+      <input type="password" id="login-clave" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <button class="btn-ingresar" onclick="doLogin()">Ingresar</button>
+    <div id="login-error" class="login-error"></div>
   </div>
+</div>
 
   <!-- ====================================================
        PANTALLA PRINCIPAL (oculta hasta login)
@@ -40,17 +41,24 @@
   <div id="pantalla-principal" style="display:none">
 
     <!-- ENCABEZADO -->
-    <header class="header">
-      <div class="header-izq">
-        <h1 class="titulo">Retenciones SIFEN</h1>
-        <p class="subtitulo">Gestión y envío automático de comprobantes de retención · DUTRIEC SA</p>
-      </div>
-      <div class="header-der" style="display:flex;align-items:center;gap:12px">
-        <span class="header-usuario">&#128100; <span id="label-usuario"></span></span>
-        <button class="btn-logout" onclick="doLogout()">Salir</button>
-      </div>
-    </header>
+   <header class="header">
+  <div class="header-izq" style="display: flex; align-items: center; gap: 15px;">
+    
+    <!-- NUEVO: Círculo contenedor para el logo -->
+    <div class="header-logo-circle"></div>
+    
+    <!-- Agrupamos los textos para que se mantengan alineados en columna -->
+    <div class="header-textos">
+      <h1 class="titulo" style="margin: 0;">Retenciones SIFEN</h1>
+      <p class="subtitulo" style="margin: 2px 0 0 0;">Gestión y envío automático de comprobantes de retención · DUTRIEC S.A</p>
+    </div>
 
+  </div>
+  <div class="header-der" style="display:flex;align-items:center;gap:12px">
+    <span class="header-usuario">&#128100; <span id="label-usuario"></span></span>
+    <button class="btn-logout" onclick="doLogout()">Salir</button>
+  </div>
+</header>
     <div class="contenedor">
 
       <!-- PESTAÑAS PRINCIPALES -->
