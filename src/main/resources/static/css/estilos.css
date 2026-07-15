@@ -18,12 +18,16 @@ body {
    ENCABEZADO
 ===================== */
 .header {
-    background-color: #1a4a8a;
+    /* Corregido: Usamos 'background' y eliminamos la coma huérfana del final */
+    background: linear-gradient(rgba(7, 103, 212, 0.8), rgb(3, 30, 94));
     color: white;
     padding: 16px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    
+    /* Opcional: Un borde inferior sutil para delimitar el header del contenido */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1); 
 }
 
 .titulo {
@@ -32,8 +36,8 @@ body {
 }
 
 .subtitulo {
-    font-size: 12px;
-    color: #b0c4de;
+    font-size: 14px;
+    color: #d5dfec;
     margin-top: 2px;
 }
 
@@ -300,47 +304,78 @@ body {
 /* =============================================
    LOGIN
 ============================================= */
+/* Contenedor principal que ocupa toda la pantalla */
 #pantalla-login {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    background: #f0f4f8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  
+  /* Carga de la imagen de fondo */
+  background-image: linear-gradient(rgba(49, 64, 99, 0.452), rgba(15, 23, 42, 0.452)), 
+                    url('/img/ampollas.jpg');
+  
+  /* Ajustes de escala y posición del fondo */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
+/* Opcional: Asegúrate de que la tarjeta de login tenga un fondo contrastante */
 .login-card {
-    background: white;
-    border-radius: 8px;
-    padding: 2rem 2.5rem;
-    width: 100%;
-    max-width: 380px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  background: rgba(255, 255, 255, 0.719); /* Blanco ligeramente translúcido */
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); /* Sombra suave para dar profundidad */
+  backdrop-filter: blur(8px); /* Efecto blur detrás de la tarjeta */
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-icon {
+  width: 90px; /* Ajusta el ancho que desees */
+  height: 90px; /* Ajusta el alto que desees */
+  margin: 0 auto 15px auto; /* Centra el icono y le da espacio abajo */
+  
+  /* Carga de la imagen */
+  background-image: url('/img/logo2.png');
+  background-repeat:no-repeat;
+  background-color: rgba(1, 162, 226, 0.925);
+  background-size: contain;
+  background-position: center;
+  border-radius: 50%; /* Hace que la imagen sea redonda (estilo avatar/logo) */
+  border: 1px solid #e9ecf0ea; /* Un borde sutil opcional */
+  box-sizing: border-box;
+  padding: 10px;
 }
 
 .login-logo      { text-align: center; margin-bottom: 1.5rem; }
-.login-icon      { font-size: 36px; margin-bottom: 8px; }
-.login-empresa   { font-size: 18px; font-weight: bold; color: #1a4a8a; }
-.login-sistema   { font-size: 12px; color: #666; margin-top: 2px; }
-.login-ruc       { font-size: 11px; color: #aaa; margin-top: 2px; }
+.login-empresa   { font-size: 18px; font-weight: bold; color: #087bbeea; }
+.login-sistema   { font-size: 12px; color: #383535; margin-top: 2px; }
+.login-ruc       { font-size: 11px; color: #3a3737; margin-top: 2px; }
 
 .login-campo           { margin-bottom: 1rem; }
-.login-campo label     { display: block; font-size: 13px; color: #555; margin-bottom: 5px; }
+.login-campo label     { display: block; font-size: 13px; color: #333232; margin-bottom: 5px; }
 .login-campo input     { width: 100%; padding: 9px 12px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; outline: none; }
-.login-campo input:focus { border-color: #1a4a8a; }
+.login-campo input:focus { border-color: #034397ea; }
 
 .btn-ingresar {
     width: 100%;
     padding: 10px;
     font-size: 14px;
     font-weight: bold;
-    background: #1a4a8a;
+    background: #034397ea;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     margin-top: 4px;
 }
-.btn-ingresar:hover { background: #0c3060; }
+.btn-ingresar:hover { background: #034397ea; }
 
 .login-card.error-borde { border: 1px solid #a32d2d; }
 
@@ -358,6 +393,25 @@ body {
 .header-usuario {
     font-size: 12px;
     color: rgba(255,255,255,0.85);
+}
+.header-logo-circle {
+  width: 45px;          /* Tamaño adecuado para la barra del header */
+  height: 45px;
+  background-color: white; /* Mantiene el fondo blanco del círculo */
+  border-radius: 50%;   /* Lo hace perfectamente redondo */
+  border: 1px solid #e2e8f0;
+  
+  /* Carga de la misma imagen del logo completo */
+  background-image: url('/img/logo2.png'); 
+  background-repeat: no-repeat;
+  background-position: center;
+  
+  /* Ajuste mágico: escala la imagen completa al tamaño del nuevo círculo */
+  background-size: contain; 
+  
+  box-sizing: border-box;
+  padding: 15px;         /* Margen interno para que no toque los bordes */
+  flex-shrink: 0;       /* Evita que el círculo se deforme si la pantalla se achica */
 }
 
 .btn-logout {
@@ -464,7 +518,7 @@ body {
     font-weight: 500;
     cursor: pointer;
 }
-.btn-azul:hover { background: #0c3060; }
+.btn-azul:hover { background: #034baa8f; }
 
 /* Spinner de carga */
 .spinner-carga {
