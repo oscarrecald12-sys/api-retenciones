@@ -95,7 +95,7 @@
         <!-- PESTAÑAS ESTADO -->
         <div class="pestanas">
           <button class="pestana activa" onclick="cambiarPestana('todas', this)">Pendientes de aprobación</button>
-          <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Facturas aprobadas</button>
+          <button class="pestana" onclick="cambiarPestana('PROCESADO', this)">Facturas procesadas</button>
         </div>
 
         <!-- FILTROS Y ACCIONES -->
@@ -183,10 +183,10 @@
 
         <!-- PESTAÑAS DASHBOARD -->
         <div class="pestanas" style="margin-bottom:12px">
-          <button class="pestana activa" onclick="cambiarPestanaDash('PENDIENTE', this)">&#128203; Pendiente</button>
+          <button class="pestana activa" onclick="cambiarPestanaDash('PENDIENTE', this)">&#128203; Pendientes</button>
           <button class="pestana" onclick="cambiarPestanaDash('ENVIADO', this)">&#128228; Enviados a Tesaka</button>
           <button class="pestana" onclick="cambiarPestanaDash('APROBADO', this)">&#9989; Aprobadas</button>
-          <button class="pestana" onclick="cambiarPestanaDash('RECHAZADO', this)">&#10060; Rechazado</button>
+          <button class="pestana" onclick="cambiarPestanaDash('RECHAZADO', this)">&#10060; Rechazados</button>
         </div>
 
         <!-- FILTROS Y ACCIONES DASHBOARD -->
@@ -227,12 +227,7 @@
           </table>
         </div>
 
-        <!-- LOG DE ENVÍOS -->
-        <div class="log-seccion">
-          <div class="log-titulo">&#128196; Log de envíos recientes</div>
-          <div id="log-contenedor"></div>
-        </div>
-
+      
 
       </div><!-- /vista-dashboard -->
 
