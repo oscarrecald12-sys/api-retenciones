@@ -411,7 +411,11 @@ public class DashboardController {
                 // === CAMPOS DE RESPUESTA TESAKA ===
                 "  aprobacion_estado       AS aprobacion_estado, " +
                 "  aprobacion_nro_control  AS aprobacion_nro_control, " +
-                "  aprobacion_comentario   AS aprobacion_comentario" +
+                "  aprobacion_comentario   AS aprobacion_comentario, " +
+                "  COALESCE(veces_revertida, 0) AS veces_revertida, " +
+                "  COALESCE(veces_rechazada, 0) AS veces_rechazada, " +
+                "  motivo_reversion        AS motivo_reversion, " +
+                "  id_factura_orig         AS idFacturaOrig" +
                 "  FROM retenciones_enviadas " +
                 "  ORDER BY fecha_creacion DESC LIMIT 200";
             //*debug
@@ -447,7 +451,7 @@ public class DashboardController {
     // Actualiza el estado de facturas enviadas o a enviar a Tesaká
     /** Estados válidos que puede recibir el endpoint actualizar-estado */
     private static final java.util.Set<String> ESTADOS_VALIDOS = java.util.Set.of(
-        "PENDIENTE", "ENVIADO", "APROBADO", "RECHAZADO", "ERROR", "TESAKA_GENERADO"
+        "PENDIENTE", "ENVIADO", "APROBADO", "RECHAZADO", "ERROR", "TESAKA_GENERADO", "REVERTIDA"
     );
 
     @PostMapping("/actualizar-estado")
@@ -483,6 +487,7 @@ public class DashboardController {
     @PostMapping("/guardar-respuesta")  
     public ResponseEntity<?> guardarRespuestaRetencion(@RequestBody Map<String, Object> request) {
         String nroComprobante = (String) request.get("nro_comprobante");
+        String nroNormalizado = (String) request.get("nro_comprobante_normalizado");
         String estado = (String) request.get("estado");
         String aprobacionNroControl = (String) request.get("aprobacion_nro_control"); //TODO. decidir si se deja este campo: 
         String aprobacionComentario = (String) request.get("aprobacion_comentario");
@@ -503,15 +508,39 @@ public class DashboardController {
         }
 
         try {
-            int filasAfectadas = retencionRepository.guardarRespuestaAprobacion(
-                nroComprobante, 
-                estado, 
-                aprobacionNroControl, 
-                aprobacionComentario
+            // Normalizamos: si el front no mandó la versión sin guiones, la generamos.
+            String normal = (nroNormalizado != null && !nroNormalizado.isEmpty())
+                    ? nroNormalizado : nroComprobante.replace("-", "");
+
+            // Match flexible: el TXT de Tesaka trae el número con guiones
+            // (001-001-0015390) pero la BD puede guardarlo sin guiones.
+            // Actualizamos estado real + datos de aprobación en una sola query.
+            int filasAfectadas = mariaDb.update(
+                "UPDATE retenciones_enviadas " +
+                "SET estado = ?, " +
+                "    aprobacion_estado = ?, " +
+                "    aprobacion_nro_control = ?, " +
+                "    aprobacion_comentario = ?, " +
+                "    fecha_actualizacion = NOW() " +
+                "WHERE nro_comprobante = ? OR REPLACE(nro_comprobante, '-', '') = ?",
+                estado, estado, aprobacionNroControl, aprobacionComentario,
+                nroComprobante, normal
             );
 
             if (filasAfectadas == 0) {
                 return ResponseEntity.status(404).body(Map.of("error", "No se encontró ninguna retención con el nro_comprobante provisto."));
+            }
+
+            // Contador de rechazos (lo ve SOPORTE en incidencias)
+            if ("RECHAZADO".equals(estado)) {
+                try {
+                    mariaDb.update(
+                        "UPDATE retenciones_enviadas SET veces_rechazada = COALESCE(veces_rechazada,0) + 1 " +
+                        "WHERE nro_comprobante = ? OR REPLACE(nro_comprobante, '-', '') = ?",
+                        nroComprobante, normal);
+                } catch (Exception ex) {
+                    System.err.println("[guardar-respuesta] no se pudo incrementar veces_rechazada: " + ex.getMessage());
+                }
             }
 
             return ResponseEntity.ok(Map.of("mensaje", "Respuesta de retención guardada correctamente."));
