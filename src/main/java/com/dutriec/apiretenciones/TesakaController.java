@@ -349,11 +349,27 @@ public class TesakaController {
     @SuppressWarnings("unchecked")
     private void guardarTesakaEnMariaDB(Long idFactura, Map<String, Object> registro) {
         try {
+            // Guard anti-duplicado: sólo bloquea si YA está en un estado
+            // "vivo" del flujo. Una factura REVERTIDA (o PENDIENTE) debe
+            // poder re-generar su TXT, así que NO cuenta como duplicado.
             Integer count = mariaDb.queryForObject(
-                "SELECT COUNT(*) FROM retenciones_enviadas WHERE id_factura_orig = ? AND estado = 'TESAKA_GENERADO'",
+                "SELECT COUNT(*) FROM retenciones_enviadas " +
+                "WHERE id_factura_orig = ? " +
+                "AND estado IN ('TESAKA_GENERADO','APROBADO')",
                 Integer.class, idFactura
             );
             if (count != null && count > 0) return;
+
+            // Si viene de una REVERTIDA, la "revivimos" a TESAKA_GENERADO
+            // en lugar de insertar una fila nueva (conserva contadores e
+            // historial). Devuelve >0 si actualizó una revertida existente.
+            int revividas = mariaDb.update(
+                "UPDATE retenciones_enviadas " +
+                "SET estado = 'TESAKA_GENERADO', fecha_actualizacion = NOW() " +
+                "WHERE id_factura_orig = ? AND estado = 'REVERTIDA'",
+                idFactura
+            );
+            if (revividas > 0) return;
 
             Map<String, Object> transaccion = (Map<String, Object>) registro.get("transaccion");
             Map<String, Object> informado   = (Map<String, Object>) registro.get("informado");

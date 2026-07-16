@@ -277,7 +277,7 @@ body {
 .badge-procesado { background: #e8f5e0; color: #2d7a0e; }
 .badge-rechazado { background: #fce8e8; color: #a32d2d; }
 .badge-anulado   { background: #f0f0f0; color: #888; }
-
+.badge-revertida { background:#FAEEDA; color:#854F0B; }
 /* =====================
    MENSAJE RESULTADO
 ===================== */

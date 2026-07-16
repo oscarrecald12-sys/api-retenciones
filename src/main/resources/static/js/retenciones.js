@@ -15,30 +15,83 @@ var pestanaDashActual = "PENDIENTE";
 var seleccionadosDash = [];
 
 // =============================================
-// USUARIOS
+// SESION / ROL (se llenan en el login contra el backend)
 // =============================================
-var USUARIOS = {
-  "admin":    "dutriec2026",
-  "vgimenez": "sifen2026",
-  "operador": "ret2026"
-};
+var USUARIO_ROL = null;
+var USUARIO_ID  = null;
+var USUARIO_NOMBRE = null;
+
+// Headers con el token de sesion para acciones protegidas.
+function authHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "X-Auth-Token": (sessionStorage.getItem("authToken") || "")
+  };
+}
 
 // =============================================
-// LOGIN
+// LOGIN (contra el backend, con BCrypt)
 // =============================================
 function doLogin() {
   var usuario = document.getElementById("login-usuario").value.trim().toLowerCase();
   var clave   = document.getElementById("login-clave").value;
   if (!usuario || !clave) { mostrarErrorLogin("Ingresa usuario y contrasena."); return; }
-  if (!USUARIOS[usuario] || USUARIOS[usuario] !== clave) {
-    mostrarErrorLogin("Usuario o contrasena incorrectos.");
-    document.getElementById("login-clave").value = "";
-    document.getElementById("login-clave").focus();
-    return;
-  }
-  document.getElementById("login-error").style.display = "none";
-  sessionStorage.setItem("usr_retencion", usuario);
-  ingresarAlSistema(usuario);
+
+  fetch(URL_API + "/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: usuario, password: clave })
+  })
+  .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+  .then(function(r){
+    if (!r.ok) {
+      mostrarErrorLogin(r.j.error || "Usuario o contrasena incorrectos.");
+      document.getElementById("login-clave").value = "";
+      document.getElementById("login-clave").focus();
+      return;
+    }
+    // Guardar sesion
+    sessionStorage.setItem("authToken", r.j.token);
+    sessionStorage.setItem("usr_retencion", r.j.username);
+    USUARIO_ROL    = r.j.rol;
+    USUARIO_ID     = r.j.id;
+    USUARIO_NOMBRE = r.j.nombre;
+    document.getElementById("login-error").style.display = "none";
+    ingresarAlSistema(r.j.username);
+  })
+  .catch(function(e){
+    mostrarErrorLogin("No se pudo conectar con el servidor: " + e.message);
+  });
+}
+
+// Restaura la sesion si el token sigue vigente (llamar al cargar la pagina).
+function restaurarSesion() {
+  var t = sessionStorage.getItem("authToken");
+  if (!t) return;
+  fetch(URL_API + "/auth/me", { headers: { "X-Auth-Token": t } })
+    .then(function(res){ if (!res.ok) throw new Error("expirada"); return res.json(); })
+    .then(function(s){
+      USUARIO_ROL    = s.rol;
+      USUARIO_ID     = s.id;
+      USUARIO_NOMBRE = s.nombre;
+      ingresarAlSistema(s.username);
+    })
+    .catch(function(){
+      sessionStorage.removeItem("authToken");
+      sessionStorage.removeItem("usr_retencion");
+    });
+}
+
+// Cierra sesion en el backend y limpia el estado local.
+function cerrarSesion() {
+  var t = sessionStorage.getItem("authToken");
+  fetch(URL_API + "/auth/logout", { method: "POST", headers: { "X-Auth-Token": t } })
+    .finally(function(){
+      sessionStorage.removeItem("authToken");
+      sessionStorage.removeItem("usr_retencion");
+      USUARIO_ROL = null; USUARIO_ID = null; USUARIO_NOMBRE = null;
+      location.reload();
+    });
 }
 
 function mostrarErrorLogin(texto) {
@@ -56,11 +109,31 @@ function ingresarAlSistema(usuario) {
   document.getElementById("label-usuario").textContent = usuario;
   var logSeccion = document.querySelector(".log-seccion");
   if (logSeccion) logSeccion.style.display = "none";
+  // La pestaña de Administración solo la ve SOPORTE
+  var pAdmin = document.getElementById("pestana-admin");
+  if (pAdmin) pAdmin.style.display = (USUARIO_ROL === "SOPORTE") ? "inline-block" : "none";
+  // Reset de vista al ingresar: siempre arrancar en "Facturas en proceso".
+  // Evita que quede la vista del usuario anterior (ej: Administración de soporte).
+  vistaActual = "facturas";
+  document.getElementById("vista-facturas").style.display  = "block";
+  document.getElementById("vista-dashboard").style.display = "none";
+  var vAdmin = document.getElementById("vista-admin");
+  if (vAdmin) vAdmin.style.display = "none";
+  var pestanasMain = document.querySelectorAll(".pestana-main");
+  for (var i = 0; i < pestanasMain.length; i++) pestanasMain[i].classList.remove("activa");
+  if (pestanasMain[0]) pestanasMain[0].classList.add("activa");
   cargarFacturas();
 }
 
 function doLogout() {
+  // Cerrar sesión en el backend (invalida el token) y limpiar estado local
+  var t = sessionStorage.getItem("authToken");
+  if (t) {
+    fetch(URL_API + "/auth/logout", { method: "POST", headers: { "X-Auth-Token": t } }).catch(function(){});
+  }
+  sessionStorage.removeItem("authToken");
   sessionStorage.removeItem("usr_retencion");
+  USUARIO_ROL = null; USUARIO_ID = null; USUARIO_NOMBRE = null;
   document.getElementById("pantalla-principal").style.display = "none";
   document.getElementById("pantalla-login").style.display = "flex";
   document.getElementById("login-usuario").value = "";
@@ -82,8 +155,8 @@ document.addEventListener("DOMContentLoaded", function() {
     if (e.key === "Enter") document.getElementById("login-clave").focus();
   });
   document.getElementById("btn-enviar").addEventListener("click", enviarAlSifen);
-  var usr = sessionStorage.getItem("usr_retencion");
-  if (usr && USUARIOS[usr]) { setTimeout(function() { ingresarAlSistema(usr); }, 2000); }
+  // Restaurar sesion validando el token contra el backend
+  restaurarSesion();
 });
 
 // =============================================
@@ -96,6 +169,9 @@ function cambiarVista(vista, elemento) {
   elemento.classList.add("activa");
   document.getElementById("vista-facturas").style.display  = (vista === "facturas")  ? "block" : "none";
   document.getElementById("vista-dashboard").style.display = (vista === "dashboard") ? "block" : "none";
+  var vAdmin = document.getElementById("vista-admin");
+  if (vAdmin) vAdmin.style.display = (vista === "admin") ? "block" : "none";
+  if (vista === "admin") cargarAdmin();
   var logSeccion = document.querySelector(".log-seccion");
   if (logSeccion) logSeccion.style.display = (vista === "dashboard") ? "block" : "none";
   if (vista === "dashboard") cargarDashboard();
@@ -110,6 +186,20 @@ var primeraVezFacturas = true;
 var primeraVezDash = true;
 
 function cargarFacturas() {
+  // Si aún no tenemos los datos de MariaDB (para saber qué facturas ya
+  // fueron procesadas), los cargamos primero y luego seguimos.
+  if (!retencionesDB || retencionesDB.length === 0) {
+    fetch(URL_API + "/retenciones/dashboard")
+      .then(function(r){ return r.ok ? r.json() : { retenciones: [] }; })
+      .then(function(data){ retencionesDB = data.retenciones || []; })
+      .catch(function(){})
+      .finally(function(){ cargarFacturasInterno(); });
+    return;
+  }
+  cargarFacturasInterno();
+}
+
+function cargarFacturasInterno() {
   if (primeraVezFacturas) {
     document.getElementById("cuerpo-tabla").innerHTML =
       "<tr><td colspan='10' style='text-align:center;padding:2.5rem'>" +
@@ -169,6 +259,19 @@ function cargarFacturas() {
           estado: (existente && existente.estado === "PROCESADO") ? "PROCESADO" : "PENDIENTE",
           motivo: ""
         };
+      });
+      // Filtrar las facturas que YA fueron procesadas en MariaDB.
+      // Una factura ya enviada/aprobada no debe seguir en "pendientes de aprobación".
+      // Las REVERTIDA se mantienen (vuelven al pool para re-procesarse).
+      var idsProcesados = {};
+      retencionesDB.forEach(function(r) {
+        var estadoR = (r.estadoSifen || "").toUpperCase();
+        if (estadoR && estadoR !== "REVERTIDA" && r.idFacturaOrig != null) {
+          idsProcesados[String(r.idFacturaOrig)] = true;
+        }
+      });
+      facturas = facturas.filter(function(f) {
+        return !idsProcesados[String(f.id)];
       });
       renderTabla();
     })
@@ -237,7 +340,7 @@ function cambiarPestanaDash(nombre, elemento) {
   elemento.style.cssText = "border-bottom:3px solid #0e347a !important;color:#0e347a !important;font-weight:bold !important;background:transparent !important;";
 
   // Ocultar/mostrar checkbox y botones según la pestaña
-  var mostrarCheckbox = (nombre === "PENDIENTE" || nombre === "RECHAZADO");
+  var mostrarCheckbox = (nombre === "PENDIENTE" || nombre === "RECHAZADO" || nombre === "REVERTIDA");
   var btnDescargar = document.getElementById("btn-descargar-txt");
   var infoSel = document.querySelector("#vista-dashboard .info-seleccion");
   var btnLimpiar = document.querySelector("#vista-dashboard .btn-secundario");
@@ -327,9 +430,20 @@ function generarTesaka() {
 function renderDashboard() {
   var buscar = document.getElementById("dash-filtro-ruc").value.toLowerCase();
   var tbody  = document.getElementById("cuerpo-dashboard");
+  // El botón "Cargar respuestas" solo se ve en la pestaña ENVIADO.
+  // Se recalcula en cada render (entrar por primera vez, filtrar, cambiar pestaña).
+  var btnCargarResp = document.getElementById("btn-cargar-respuestas");
+  if (btnCargarResp) btnCargarResp.style.display = (pestanaDashActual === "ENVIADO") ? "inline-block" : "none";
   var filtrados = retencionesDB.filter(function(r) {
-    // Filtrar por pestaña actual
-    var matchEstado = r.estadoSifen === pestanaDashActual;
+    // Filtrar por pestaña actual.
+    // Una REVERTIDA vuelve al pool: se muestra tanto en su pestaña propia
+    // como junto a las PENDIENTE (para poder re-descargar el TXT).
+    var matchEstado;
+    if (pestanaDashActual === "PENDIENTE") {
+      matchEstado = (r.estadoSifen === "PENDIENTE" || r.estadoSifen === "REVERTIDA");
+    } else {
+      matchEstado = r.estadoSifen === pestanaDashActual;
+    }
     var matchBuscar = !buscar ||
       (r.ordenPago    && String(r.ordenPago).toLowerCase().indexOf(buscar) !== -1) ||
       (r.rucProveedor && r.rucProveedor.toLowerCase().indexOf(buscar) !== -1) ||
@@ -343,7 +457,7 @@ function renderDashboard() {
   }
 
   // Checkbox solo en PENDIENTE y RECHAZADO (para descargar TXT)
-  var mostrarCheckbox = (pestanaDashActual === "PENDIENTE" || pestanaDashActual === "RECHAZADO");
+  var mostrarCheckbox = (pestanaDashActual === "PENDIENTE" || pestanaDashActual === "RECHAZADO" || pestanaDashActual === "REVERTIDA");
   var headerCheckbox = document.querySelector("#vista-dashboard thead th:first-child");
   if (headerCheckbox) headerCheckbox.style.display = mostrarCheckbox ? "" : "none";
 
@@ -376,17 +490,24 @@ function renderDashboard() {
         "<button class='btn-rechazo' onclick='abrirRechazarTesaka(" + r.id + ",\"" + (r.numDocRet || "") + "\",\"" + (r.razonSocial || "").replace(/"/g, "&quot;") + "\")'>" +
         "✕ Rechazar</button></div>";
     } else if (pestanaDashActual === "APROBADO") {
-      // Aprobadas: solo ver detalles
+      // Aprobadas: ver detalles. El JEFE ademas puede revertir.
       accion = "<button class='btn-reenviar' onclick='verDetallesLinea(\"" + r.id + "\")' style='color:#666;border-color:#ccc'>Ver Detalles</button>";
+      if (USUARIO_ROL === "JEFE") {
+        accion += "<button class='btn-rechazo' style='margin-top:4px' onclick='revertirAprobado(" + r.id + ")'>↩ Revertir</button>";
+      }
     } else if (pestanaDashActual === "RECHAZADO") {
       // Rechazado: checkbox para re-descargar + ver motivo
       accion = "<button class='btn-rechazo' onclick='verDetallesLinea(\"" + r.id + "\")'>Ver motivo</button>";
+    } else if (pestanaDashActual === "REVERTIDA") {
+      // Revertida: vuelve al pool, checkbox para re-descargar TXT
+      accion = "<span style='font-size:11px;color:#888'>Re-descargar TXT ↑</span>";
     }
 
     var checked = seleccionadosDash.indexOf(String(r.id)) !== -1 ? "checked" : "";
 
-    // Fila con fondo especial si fue rechazada previamente
-    var estiloFila = fueRechazado ? "background:#fff8f0;border-left:3px solid #f59e0b;" : "";
+    // Fila con fondo especial si fue rechazada previamente o revertida
+    var esRevertida = (r.estadoSifen === "REVERTIDA" || r.estado === "REVERTIDA");
+    var estiloFila = (fueRechazado || esRevertida) ? "background:#fff8f0;border-left:3px solid #f59e0b;" : "";
     html += "<tr style='" + estiloFila + "'>";
 
     if (mostrarCheckbox) {
@@ -425,8 +546,8 @@ function renderDashboard() {
 }
 
 function badgeDashboard(estado) {
-  var map    = { "ENVIADO":"badge-procesado", "PENDIENTE":"badge-pendiente", "ERROR":"badge-rechazado", "RECHAZADO":"badge-rechazado", "APROBADO":"badge-procesado" };
-  var labels = { "ENVIADO":"Enviado", "PENDIENTE":"Pendiente", "ERROR":"Error", "RECHAZADO":"Rechazado", "APROBADO":"Aprobado" };
+  var map    = { "ENVIADO":"badge-procesado", "PENDIENTE":"badge-pendiente", "ERROR":"badge-rechazado", "RECHAZADO":"badge-rechazado", "APROBADO":"badge-procesado", "REVERTIDA":"badge-revertida" };
+  var labels = { "ENVIADO":"Enviado", "PENDIENTE":"Pendiente", "ERROR":"Error", "RECHAZADO":"Rechazado", "APROBADO":"Aprobado", "REVERTIDA":"Revertida" };
   return "<span class='badge " + (map[estado] || "") + "'>" + (labels[estado] || estado) + "</span>";
 }
 
@@ -492,6 +613,50 @@ function confirmarAprobarTesaka() {
     });
   })
   .catch(function(e) { mostrarMensaje("Error al aprobar: " + e.message, "error"); });
+}
+
+// Abre el modal de reversión (solo JEFE). Reemplaza el prompt() del navegador.
+var revertirIdActual = null;
+function revertirAprobado(id) {
+  if (USUARIO_ROL !== "JEFE") {
+    alert("Solo el jefe puede revertir una factura aprobada.");
+    return;
+  }
+  revertirIdActual = id;
+  // Buscar el comprobante para mostrarlo en el modal
+  var reg = retencionesDB.filter(function(r){ return String(r.id) === String(id); })[0];
+  document.getElementById("rev-comprobante").textContent =
+    reg ? (reg.numDocRet || reg.nroComprobante || ("ID " + id)) : ("ID " + id);
+  document.getElementById("rev-motivo").value = "";
+  document.getElementById("rev-error").style.display = "none";
+  document.getElementById("overlay-revertir").style.display = "flex";
+}
+
+function cerrarRevertir() {
+  document.getElementById("overlay-revertir").style.display = "none";
+  revertirIdActual = null;
+}
+
+function confirmarRevertir() {
+  var motivo = document.getElementById("rev-motivo").value.trim();
+  var err = document.getElementById("rev-error");
+  if (!motivo) {
+    err.textContent = "El motivo es obligatorio.";
+    err.style.display = "block";
+    return;
+  }
+  fetch(URL_API + "/retenciones/revertir/" + revertirIdActual, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ motivo: motivo })
+  })
+  .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+  .then(function(r){
+    if (!r.ok) { err.textContent = r.j.error || "No se pudo revertir."; err.style.display = "block"; return; }
+    cerrarRevertir();
+    cargarDashboard();
+  })
+  .catch(function(e){ err.textContent = "Error de red: " + e.message; err.style.display = "block"; });
 }
 
 function abrirRechazarTesaka(id, numDoc, proveedor) {
@@ -998,6 +1163,19 @@ function cambiarPestana(nombre, elemento) {
     // Ocultar el contenedor de historial y mostrar la tabla normal
     var hist = document.getElementById("historial-aprobadas");
     if (hist) hist.style.display = "none";
+    // Ocultar los filtros propios del historial (quedaban colgados al volver)
+    var filtrosHist = document.getElementById("filtros-historial");
+    if (filtrosHist) filtrosHist.style.display = "none";
+    // Restaurar los encabezados originales de la tabla de facturas
+    // (renderHistorialAprobadas los había reemplazado)
+    var theadFact = document.getElementById("cuerpo-tabla").closest("table").querySelector("thead tr");
+    if (theadFact) {
+      theadFact.innerHTML =
+        "<th style='width:36px'></th>" +
+        "<th>Nº Factura</th><th>Proveedor / RUC</th><th>Orden Pago</th><th>Moneda</th>" +
+        "<th class='der'>Monto Total</th><th class='der'>IVA</th><th class='der'>Retención 30%</th>" +
+        "<th>Fecha Emisión</th><th>Estado</th>";
+    }
     document.getElementById("cuerpo-tabla").parentElement.style.display = "";
     document.querySelector("#vista-facturas .barra-acciones").style.display = "";
     renderTabla();
@@ -1853,3 +2031,278 @@ function mostrarCheckboxesEnDash() {
 // El usuario no ve spinner ni parpadeo — solo se actualizan los datos.
 setInterval(function() { if (vistaActual === "facturas") cargarFacturas(); }, 60000);
 setInterval(function() { if (vistaActual === "dashboard") cargarDashboard(); }, 120000);
+
+// =============================================
+// ADMINISTRACION (solo SOPORTE)
+// =============================================
+function cargarAdmin() {
+  cargarUsuariosAdmin();
+  cargarIncidencias();
+}
+
+function cargarUsuariosAdmin() {
+  fetch(URL_API + "/retenciones/usuarios", { headers: authHeaders() })
+    .then(function(res){ if (!res.ok) throw new Error("no autorizado"); return res.json(); })
+    .then(function(usuarios){
+      var tbody = document.getElementById("tbody-usuarios");
+      var select = document.getElementById("cp-usuario");
+      tbody.innerHTML = "";
+      select.innerHTML = "<option value=''>— Elegí un usuario —</option>";
+      usuarios.forEach(function(u){
+        var activo = (u.activo === true || u.activo === 1 || u.activo === "1");
+        tbody.innerHTML +=
+          "<tr style='border-bottom:1px solid #eee'>" +
+          "<td style='padding:8px'>" + u.username + "</td>" +
+          "<td style='padding:8px'>" + (u.nombre || "") + "</td>" +
+          "<td style='padding:8px'>" + u.rol + "</td>" +
+          "<td style='padding:8px'>" + (activo ? "Sí" : "No") + "</td>" +
+          "</tr>";
+        select.innerHTML += "<option value='" + u.username + "'>" + u.username + " (" + u.rol + ")</option>";
+      });
+    })
+    .catch(function(e){
+      document.getElementById("tbody-usuarios").innerHTML =
+        "<tr><td colspan='4' style='padding:8px;color:#a32d2d'>No se pudieron cargar los usuarios.</td></tr>";
+    });
+}
+
+function cargarIncidencias() {
+  fetch(URL_API + "/retenciones/auditoria/incidencias", { headers: authHeaders() })
+    .then(function(res){ if (!res.ok) throw new Error("no autorizado"); return res.json(); })
+    .then(function(filas){
+      var tbody = document.getElementById("tbody-incidencias");
+      var vacio = document.getElementById("incidencias-vacio");
+      tbody.innerHTML = "";
+      if (!filas || filas.length === 0) { vacio.style.display = "block"; return; }
+      vacio.style.display = "none";
+      filas.forEach(function(r){
+        tbody.innerHTML +=
+          "<tr style='border-bottom:1px solid #eee'>" +
+          "<td style='padding:8px'>" + (r.nro_comprobante || "") + "</td>" +
+          "<td style='padding:8px'>" + (r.razon_social || "") + "</td>" +
+          "<td style='padding:8px'>" + (r.estado || "") + "</td>" +
+          "<td style='padding:8px;text-align:center;font-weight:600'>" + (r.veces_revertida || 0) + "</td>" +
+          "<td style='padding:8px;text-align:center;font-weight:600'>" + (r.veces_rechazada || 0) + "</td>" +
+          "</tr>";
+      });
+    })
+    .catch(function(e){
+      document.getElementById("tbody-incidencias").innerHTML =
+        "<tr><td colspan='5' style='padding:8px;color:#a32d2d'>No se pudieron cargar las incidencias.</td></tr>";
+    });
+}
+
+// Genera el hash de la contraseña en el backend y da de alta el usuario
+function crearUsuario() {
+  var msg = document.getElementById("nu-msg");
+  var username = document.getElementById("nu-username").value.trim();
+  var nombre   = document.getElementById("nu-nombre").value.trim();
+  var password = document.getElementById("nu-password").value;
+  var rol      = document.getElementById("nu-rol").value;
+
+  if (!username || !password) { msg.style.color = "#a32d2d"; msg.textContent = "Usuario y contraseña son obligatorios."; return; }
+  if (password.length < 6)    { msg.style.color = "#a32d2d"; msg.textContent = "La contraseña debe tener al menos 6 caracteres."; return; }
+
+  msg.style.color = "#666"; msg.textContent = "Creando...";
+
+  // Paso 1: generar el hash BCrypt en el backend
+  fetch(URL_API + "/auth/hash", {
+    method: "POST", headers: authHeaders(),
+    body: JSON.stringify({ password: password })
+  })
+  .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+  .then(function(r){
+    if (!r.ok) throw new Error(r.j.error || "No se pudo generar el hash.");
+    // Paso 2: crear el usuario con el hash
+    return fetch(URL_API + "/retenciones/usuarios", {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ username: username, password_hash: r.j.hash, nombre: nombre, rol: rol })
+    });
+  })
+  .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+  .then(function(r){
+    if (!r.ok) { msg.style.color = "#a32d2d"; msg.textContent = r.j.error || "No se pudo crear."; return; }
+    msg.style.color = "#2d7a0e"; msg.textContent = "Usuario creado correctamente.";
+    document.getElementById("nu-username").value = "";
+    document.getElementById("nu-nombre").value = "";
+    document.getElementById("nu-password").value = "";
+    cargarUsuariosAdmin();
+  })
+  .catch(function(e){ msg.style.color = "#a32d2d"; msg.textContent = e.message; });
+}
+
+// Cambia la contraseña de un usuario: genera hash nuevo y lo guarda
+function cambiarPassword() {
+  var msg = document.getElementById("cp-msg");
+  var username = document.getElementById("cp-usuario").value;
+  var password = document.getElementById("cp-password").value;
+
+  if (!username) { msg.style.color = "#a32d2d"; msg.textContent = "Elegí un usuario."; return; }
+  if (password.length < 6) { msg.style.color = "#a32d2d"; msg.textContent = "La contraseña debe tener al menos 6 caracteres."; return; }
+
+  msg.style.color = "#666"; msg.textContent = "Cambiando...";
+
+  fetch(URL_API + "/auth/hash", {
+    method: "POST", headers: authHeaders(),
+    body: JSON.stringify({ password: password })
+  })
+  .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+  .then(function(r){
+    if (!r.ok) throw new Error(r.j.error || "No se pudo generar el hash.");
+    return fetch(URL_API + "/retenciones/usuarios/password", {
+      method: "PUT", headers: authHeaders(),
+      body: JSON.stringify({ username: username, password_hash: r.j.hash })
+    });
+  })
+  .then(function(res){ return res.json().then(function(j){ return { ok: res.ok, j: j }; }); })
+  .then(function(r){
+    if (!r.ok) { msg.style.color = "#a32d2d"; msg.textContent = r.j.error || "No se pudo cambiar."; return; }
+    msg.style.color = "#2d7a0e"; msg.textContent = "Contraseña actualizada.";
+    document.getElementById("cp-password").value = "";
+  })
+  .catch(function(e){ msg.style.color = "#a32d2d"; msg.textContent = e.message; });
+}
+
+
+// Muestra u oculta el texto de un campo de contraseña (botón "Ver"/"Ocultar")
+function toggleVerPass(inputId, elemento) {
+  var input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === "password") {
+    input.type = "text";
+    elemento.textContent = "Ocultar";
+  } else {
+    input.type = "password";
+    elemento.textContent = "Ver";
+  }
+}
+
+
+// =============================================
+// CARGAR RESPUESTAS TESAKA (JSON) — automatiza aprobación/rechazo
+// =============================================
+function cargarRespuestasJson(inputFile) {
+  var file = inputFile.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var data;
+    try {
+      data = JSON.parse(e.target.result);
+    } catch (err) {
+      mostrarMensaje("El archivo no es un JSON válido: " + err.message, "error");
+      inputFile.value = "";
+      return;
+    }
+    // El JSON de Tesaka es un array de comprobantes
+    var lista = Array.isArray(data) ? data : [data];
+    procesarRespuestasTesaka(lista);
+    inputFile.value = "";
+  };
+  reader.onerror = function() {
+    mostrarMensaje("No se pudo leer el archivo.", "error");
+    inputFile.value = "";
+  };
+  reader.readAsText(file);
+}
+
+// Extrae de cada comprobante el nro y el estado, y llama a guardar-respuesta.
+// Formato real del TXT de Tesaka: array de { datos:{transaccion,...}, estado, recepcion:{...} }
+function procesarRespuestasTesaka(lista) {
+  var items = [];
+  var vistos = {};       // para detectar comprobantes duplicados dentro del archivo
+  var duplicados = 0;
+  var borradores = 0;
+
+  lista.forEach(function(item) {
+    var datos = item.datos || item;
+    var recepcion = item.recepcion || {};
+    var trans = (datos && datos.transaccion) ? datos.transaccion : {};
+
+    var nroVenta = trans.numeroComprobanteVenta || datos.id || null;
+    if (!nroVenta) return;
+
+    var estadoRaw = (item.estado || "").toString().toLowerCase();
+    var recOk = recepcion.recepcionCorrecta;
+    var procOk = recepcion.procesamientoCorrecto;
+    var estado;
+    if (recOk === false || procOk === false) {
+      estado = "RECHAZADO";
+    } else if (recOk === true && procOk === true) {
+      estado = "APROBADO";
+    } else if (estadoRaw === "enviado") {
+      estado = "APROBADO";
+    } else if (estadoRaw === "borrador") {
+      borradores++;
+      return;  // borrador: aun no procesado, se ignora
+    } else {
+      estado = "APROBADO";
+    }
+
+    // Deduplicar: si el mismo comprobante aparece dos veces en el archivo,
+    // solo procesamos el primero (el segundo UPDATE seria redundante).
+    var clave = String(nroVenta).replace(/-/g, "");
+    if (vistos[clave]) { duplicados++; return; }
+    vistos[clave] = true;
+
+    var comentario = recepcion.mensajeProcesamiento || recepcion.mensajeRecepcion || null;
+    var nroControl = recepcion.numeroControl || null;
+
+    items.push({
+      nro_comprobante: String(nroVenta),
+      nro_comprobante_normalizado: clave,
+      estado: estado,
+      aprobacion_nro_control: nroControl,
+      aprobacion_comentario: comentario
+    });
+  });
+
+  if (items.length === 0) {
+    var vacio = "No se encontraron comprobantes procesables en el archivo.";
+    if (duplicados > 0) vacio += " (" + duplicados + " duplicado(s))";
+    if (borradores > 0) vacio += " (" + borradores + " en borrador)";
+    mostrarMensaje(vacio, "error");
+    return;
+  }
+
+  mostrarMensaje("Procesando " + items.length + " comprobante(s) unico(s)...", "info");
+
+  var aprobadas = 0, rechazadas = 0, noEncontrados = 0, errCount = 0;
+  var promesas = items.map(function(it) {
+    return fetch(URL_API + "/retenciones/guardar-respuesta", {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify(it)
+    })
+    .then(function(res){ return res.json().then(function(j){ return { status: res.status, j: j, estado: it.estado }; }); })
+    .then(function(r){
+      if (r.status === 200) {
+        if (r.estado === "RECHAZADO") rechazadas++; else aprobadas++;
+      } else if (r.status === 404) {
+        noEncontrados++;
+      } else {
+        errCount++;
+      }
+    })
+    .catch(function(){ errCount++; });
+  });
+
+  Promise.all(promesas).then(function(){
+    // Armar un desglose claro de lo que paso
+    var partes = [];
+    if (aprobadas > 0)     partes.push(aprobadas + " aprobada(s)");
+    if (rechazadas > 0)    partes.push(rechazadas + " rechazada(s)");
+    if (noEncontrados > 0) partes.push(noEncontrados + " no encontrada(s)");
+    if (errCount > 0)      partes.push(errCount + " con error");
+    if (duplicados > 0)    partes.push(duplicados + " duplicado(s) omitido(s)");
+    if (borradores > 0)    partes.push(borradores + " en borrador");
+
+    var msg = partes.join(", ");
+    // Tipo de mensaje segun el resultado global
+    var tipo = "ok";
+    if (aprobadas === 0 && rechazadas === 0) tipo = "error";
+    else if (noEncontrados > 0 || errCount > 0) tipo = "warning";
+
+    mostrarMensaje(msg, tipo);
+    cargarDashboard();
+  });
+}
