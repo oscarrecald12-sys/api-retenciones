@@ -310,6 +310,10 @@ function cargarDashboard() {
       document.getElementById("dash-aprobados").textContent  = data.resumen.aprobados  || 0;
       document.getElementById("dash-rechazados").textContent = data.resumen.rechazados || 0;
       retencionesDB = data.retenciones || [];
+      // Contador de borradores (el backend no lo trae aún): se cuenta acá.
+      var nBorr = retencionesDB.filter(function(r){ return r.estadoSifen === "BORRADOR"; }).length;
+      var elBorr = document.getElementById("dash-borradores");
+      if (elBorr) elBorr.textContent = nBorr;
       renderDashboard();
       renderLog(data.logs || []);
     })
@@ -340,7 +344,7 @@ function cambiarPestanaDash(nombre, elemento) {
   elemento.style.cssText = "border-bottom:3px solid #0e347a !important;color:#0e347a !important;font-weight:bold !important;background:transparent !important;";
 
   // Ocultar/mostrar checkbox y botones según la pestaña
-  var mostrarCheckbox = (nombre === "PENDIENTE" || nombre === "RECHAZADO" || nombre === "REVERTIDA");
+  var mostrarCheckbox = (nombre === "PENDIENTE" || nombre === "RECHAZADO" || nombre === "REVERTIDA" || nombre === "BORRADOR");
   var btnDescargar = document.getElementById("btn-descargar-txt");
   var infoSel = document.querySelector("#vista-dashboard .info-seleccion");
   var btnLimpiar = document.querySelector("#vista-dashboard .btn-secundario");
@@ -441,6 +445,15 @@ function renderDashboard() {
     var matchEstado;
     if (pestanaDashActual === "PENDIENTE") {
       matchEstado = (r.estadoSifen === "PENDIENTE" || r.estadoSifen === "REVERTIDA");
+    } else if (pestanaDashActual === "RECHAZADO") {
+      // Captura tanto el estado real como el aprobacion_estado (por si
+      // quedaron desincronizados en rechazos previos al fix).
+      matchEstado = (r.estadoSifen === "RECHAZADO" || r.aprobacion_estado === "RECHAZADO");
+    } else if (pestanaDashActual === "ENVIADO") {
+      // Enviados: incluye las que se generó el TXT pero aún no tienen respuesta,
+      // excluyendo las que ya fueron rechazadas por aprobacion_estado.
+      matchEstado = (r.estadoSifen === "ENVIADO" || r.estadoSifen === "TESAKA_GENERADO")
+                    && r.aprobacion_estado !== "RECHAZADO" && r.aprobacion_estado !== "APROBADO";
     } else {
       matchEstado = r.estadoSifen === pestanaDashActual;
     }
@@ -457,7 +470,7 @@ function renderDashboard() {
   }
 
   // Checkbox solo en PENDIENTE y RECHAZADO (para descargar TXT)
-  var mostrarCheckbox = (pestanaDashActual === "PENDIENTE" || pestanaDashActual === "RECHAZADO" || pestanaDashActual === "REVERTIDA");
+  var mostrarCheckbox = (pestanaDashActual === "PENDIENTE" || pestanaDashActual === "RECHAZADO" || pestanaDashActual === "REVERTIDA" || pestanaDashActual === "BORRADOR");
   var headerCheckbox = document.querySelector("#vista-dashboard thead th:first-child");
   if (headerCheckbox) headerCheckbox.style.display = mostrarCheckbox ? "" : "none";
 
@@ -501,6 +514,11 @@ function renderDashboard() {
     } else if (pestanaDashActual === "REVERTIDA") {
       // Revertida: vuelve al pool, checkbox para re-descargar TXT
       accion = "<span style='font-size:11px;color:#888'>Re-descargar TXT ↑</span>";
+    } else if (pestanaDashActual === "BORRADOR") {
+      // Borrador: aviso de Tesaka, quedó a medias. Ver detalle + re-descargar.
+      accion = "<div style='display:flex;flex-direction:column;gap:4px'>" +
+        "<button class='btn-reenviar' onclick='verDetallesLinea(\"" + r.id + "\")' style='color:#666;border-color:#ccc'>Ver detalle</button>" +
+        "<span style='font-size:10px;color:#888'>Re-descargar TXT ↑</span></div>";
     }
 
     var checked = seleccionadosDash.indexOf(String(r.id)) !== -1 ? "checked" : "";
@@ -546,8 +564,8 @@ function renderDashboard() {
 }
 
 function badgeDashboard(estado) {
-  var map    = { "ENVIADO":"badge-procesado", "PENDIENTE":"badge-pendiente", "ERROR":"badge-rechazado", "RECHAZADO":"badge-rechazado", "APROBADO":"badge-procesado", "REVERTIDA":"badge-revertida" };
-  var labels = { "ENVIADO":"Enviado", "PENDIENTE":"Pendiente", "ERROR":"Error", "RECHAZADO":"Rechazado", "APROBADO":"Aprobado", "REVERTIDA":"Revertida" };
+  var map    = { "ENVIADO":"badge-procesado", "PENDIENTE":"badge-pendiente", "ERROR":"badge-rechazado", "RECHAZADO":"badge-rechazado", "APROBADO":"badge-procesado", "REVERTIDA":"badge-revertida", "BORRADOR":"badge-borrador" };
+  var labels = { "ENVIADO":"Enviado", "PENDIENTE":"Pendiente", "ERROR":"Error", "RECHAZADO":"Rechazado", "APROBADO":"Aprobado", "REVERTIDA":"Revertida", "BORRADOR":"Borrador" };
   return "<span class='badge " + (map[estado] || "") + "'>" + (labels[estado] || estado) + "</span>";
 }
 
@@ -2212,7 +2230,6 @@ function procesarRespuestasTesaka(lista) {
   var items = [];
   var vistos = {};       // para detectar comprobantes duplicados dentro del archivo
   var duplicados = 0;
-  var borradores = 0;
 
   lista.forEach(function(item) {
     var datos = item.datos || item;
@@ -2228,13 +2245,12 @@ function procesarRespuestasTesaka(lista) {
     var estado;
     if (recOk === false || procOk === false) {
       estado = "RECHAZADO";
+    } else if (estadoRaw === "borrador") {
+      estado = "BORRADOR";   // aviso: quedó a medias en Tesaka, el usuario debe revisarla
     } else if (recOk === true && procOk === true) {
       estado = "APROBADO";
     } else if (estadoRaw === "enviado") {
       estado = "APROBADO";
-    } else if (estadoRaw === "borrador") {
-      borradores++;
-      return;  // borrador: aun no procesado, se ignora
     } else {
       estado = "APROBADO";
     }
@@ -2267,7 +2283,7 @@ function procesarRespuestasTesaka(lista) {
 
   mostrarMensaje("Procesando " + items.length + " comprobante(s) unico(s)...", "info");
 
-  var aprobadas = 0, rechazadas = 0, noEncontrados = 0, errCount = 0;
+  var aprobadas = 0, rechazadas = 0, borradoresProc = 0, noEncontrados = 0, errCount = 0;
   var promesas = items.map(function(it) {
     return fetch(URL_API + "/retenciones/guardar-respuesta", {
       method: "POST", headers: authHeaders(),
@@ -2276,7 +2292,9 @@ function procesarRespuestasTesaka(lista) {
     .then(function(res){ return res.json().then(function(j){ return { status: res.status, j: j, estado: it.estado }; }); })
     .then(function(r){
       if (r.status === 200) {
-        if (r.estado === "RECHAZADO") rechazadas++; else aprobadas++;
+        if (r.estado === "RECHAZADO") rechazadas++;
+        else if (r.estado === "BORRADOR") borradoresProc++;
+        else aprobadas++;
       } else if (r.status === 404) {
         noEncontrados++;
       } else {
@@ -2287,20 +2305,18 @@ function procesarRespuestasTesaka(lista) {
   });
 
   Promise.all(promesas).then(function(){
-    // Armar un desglose claro de lo que paso
     var partes = [];
-    if (aprobadas > 0)     partes.push(aprobadas + " aprobada(s)");
-    if (rechazadas > 0)    partes.push(rechazadas + " rechazada(s)");
-    if (noEncontrados > 0) partes.push(noEncontrados + " no encontrada(s)");
-    if (errCount > 0)      partes.push(errCount + " con error");
-    if (duplicados > 0)    partes.push(duplicados + " duplicado(s) omitido(s)");
-    if (borradores > 0)    partes.push(borradores + " en borrador");
+    if (aprobadas > 0)      partes.push(aprobadas + " aprobada(s)");
+    if (rechazadas > 0)     partes.push(rechazadas + " rechazada(s)");
+    if (borradoresProc > 0) partes.push(borradoresProc + " en borrador (revisar)");
+    if (noEncontrados > 0)  partes.push(noEncontrados + " no encontrada(s)");
+    if (errCount > 0)       partes.push(errCount + " con error");
+    if (duplicados > 0)     partes.push(duplicados + " duplicado(s) omitido(s)");
 
     var msg = partes.join(", ");
-    // Tipo de mensaje segun el resultado global
     var tipo = "ok";
-    if (aprobadas === 0 && rechazadas === 0) tipo = "error";
-    else if (noEncontrados > 0 || errCount > 0) tipo = "warning";
+    if (aprobadas === 0 && rechazadas === 0 && borradoresProc === 0) tipo = "error";
+    else if (noEncontrados > 0 || errCount > 0 || borradoresProc > 0) tipo = "warning";
 
     mostrarMensaje(msg, tipo);
     cargarDashboard();

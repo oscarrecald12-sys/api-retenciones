@@ -417,7 +417,15 @@ public class DashboardController {
                 "  motivo_reversion        AS motivo_reversion, " +
                 "  id_factura_orig         AS idFacturaOrig" +
                 "  FROM retenciones_enviadas " +
-                "  ORDER BY fecha_creacion DESC LIMIT 200";
+                // Prioriza los estados que requieren atención (borrador, rechazado,
+                // revertida, pendiente) para que el LIMIT no los deje fuera.
+                // Las aprobadas/enviadas (muchas) quedan al final y se recortan.
+                "  ORDER BY CASE " +
+                "    WHEN estado IN ('BORRADOR','REVERTIDA','PENDIENTE') THEN 0 " +
+                "    WHEN estado = 'RECHAZADO' OR aprobacion_estado = 'RECHAZADO' THEN 1 " +
+                "    WHEN estado IN ('ENVIADO','TESAKA_GENERADO') THEN 2 " +
+                "    ELSE 3 END, " +
+                "  fecha_creacion DESC LIMIT 500";
             //*debug
             //System.out.println("obtenerRetenciones - mariaDb.queryForList:");
             //System.out.println(sqlQuery);
@@ -451,7 +459,7 @@ public class DashboardController {
     // Actualiza el estado de facturas enviadas o a enviar a Tesaká
     /** Estados válidos que puede recibir el endpoint actualizar-estado */
     private static final java.util.Set<String> ESTADOS_VALIDOS = java.util.Set.of(
-        "PENDIENTE", "ENVIADO", "APROBADO", "RECHAZADO", "ERROR", "TESAKA_GENERADO", "REVERTIDA"
+        "PENDIENTE", "ENVIADO", "APROBADO", "RECHAZADO", "ERROR", "TESAKA_GENERADO", "REVERTIDA", "BORRADOR"
     );
 
     @PostMapping("/actualizar-estado")
@@ -495,10 +503,10 @@ public class DashboardController {
         if (nroComprobante == null || nroComprobante.trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "El campo nro_comprobante es requerido."));
         }
-        // Validación: solo APROBADO o RECHAZADO son respuestas válidas de Tesaka
-        if (estado == null || !java.util.Set.of("APROBADO", "RECHAZADO").contains(estado.toUpperCase())) {
+        // Validación: respuestas válidas de Tesaka (APROBADO, RECHAZADO o BORRADOR)
+        if (estado == null || !java.util.Set.of("APROBADO", "RECHAZADO", "BORRADOR").contains(estado.toUpperCase())) {
             return ResponseEntity.badRequest().body(Map.of(
-                "error", "Estado inválido: '" + estado + "'. Válidos: APROBADO, RECHAZADO"
+                "error", "Estado inválido: '" + estado + "'. Válidos: APROBADO, RECHAZADO, BORRADOR"
             ));
         }
         estado = estado.toUpperCase();
@@ -515,15 +523,18 @@ public class DashboardController {
             // Match flexible: el TXT de Tesaka trae el número con guiones
             // (001-001-0015390) pero la BD puede guardarlo sin guiones.
             // Actualizamos estado real + datos de aprobación en una sola query.
+            // Para BORRADOR no seteamos aprobacion_estado (ese campo es solo
+            // para la decisión final aprobado/rechazado).
+            String aprobEstado = "BORRADOR".equals(estado) ? null : estado;
             int filasAfectadas = mariaDb.update(
                 "UPDATE retenciones_enviadas " +
                 "SET estado = ?, " +
-                "    aprobacion_estado = ?, " +
+                "    aprobacion_estado = COALESCE(?, aprobacion_estado), " +
                 "    aprobacion_nro_control = ?, " +
                 "    aprobacion_comentario = ?, " +
                 "    fecha_actualizacion = NOW() " +
                 "WHERE nro_comprobante = ? OR REPLACE(nro_comprobante, '-', '') = ?",
-                estado, estado, aprobacionNroControl, aprobacionComentario,
+                estado, aprobEstado, aprobacionNroControl, aprobacionComentario,
                 nroComprobante, normal
             );
 
