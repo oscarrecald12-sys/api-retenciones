@@ -1,29 +1,15 @@
 # API Retenciones SIFEN — DUTRIEC SA
 
-Sistema de gestión y envío automático de comprobantes de retención al SIFEN (SET Paraguay) y TESAKA (DNIT).
-
-**Empresa:** DUTRIEC SA  
-**RUC:** 80015056-2  
-
----
-
-## Tecnologías
-
-| Componente | Tecnología |
-|---|---|
-| Backend | Spring Boot 3.5 — Java 21 |
-| Base de datos legada | SQL Anywhere (solo lectura) |
-| Base de datos local | MariaDB — puerto 3306 |
-| Frontend | HTML + JS + CSS (servido por Spring Boot) |
+Sistema de gestión y envío de comprobantes de retención de IVA integrado con el sistema SIFEN/TESAKA del Paraguay.
 
 ---
 
 ## Requisitos previos
 
-- Java 21 instalado
-- MariaDB corriendo en `localhost:3306`
-- Acceso a SQL Anywhere (IP configurada en `DataSourceConfig.java`)
-- Maven (incluido como `mvnw`)
+- **Java 21** — [Descargar desde Adoptium](https://adoptium.net)
+- **Git** — [Descargar desde git-scm.com](https://git-scm.com/download/win)
+- **MariaDB** — versión 10.x o superior
+- **HeidiSQL** u otro cliente SQL (opcional, para administrar la BD)
 
 ---
 
@@ -31,59 +17,84 @@ Sistema de gestión y envío automático de comprobantes de retención al SIFEN 
 
 ### 1. Clonar el repositorio
 
-```bash
+```cmd
 git clone https://github.com/Nicoib25/api-retenciones.git
 cd api-retenciones
 ```
 
-### 2. Instalar el driver de SQL Anywhere
+### 2. Crear la base de datos
 
-El driver `jconn3.jar` está en la carpeta `libs/`. Instalarlo en Maven local:
+Abrí HeidiSQL y conectate a tu MariaDB local. Luego ejecutá el script:
 
-```bash
-mvn install:install-file -Dfile=libs/jconn3-11.0.jar -DgroupId=com.sybase -DartifactId=jconn3 -Dversion=11.0 -Dpackaging=jar
+**Menú Archivo → Ejecutar archivo SQL → seleccionar `retenciones_sifen.sql`**
+
+Esto crea la BD `retenciones_sifen` con todas las tablas y datos iniciales.
+
+### 3. Configurar credenciales
+
+Abrí el archivo:
+```
+src/main/java/com/dutriec/apiretenciones/DataSourceConfig.java
 ```
 
-### 3. Crear la base de datos MariaDB
+Buscá el método `mariadbDataSource()` y cambiá el usuario y contraseña de MariaDB:
 
-Ejecutar el script en MariaDB:
-
-```bash
-mysql -u root retenciones_sifen < retenciones_sifen.sql
+```java
+config.setUsername("root");         // ← tu usuario MariaDB
+config.setPassword("TU_CLAVE");     // ← tu contraseña MariaDB
 ```
 
-O abrir el archivo `retenciones_sifen.sql` en un gestor de base de datos (ej. Heidisql o Dbeaver) y ejecutarlo.
+> **No modificar** el método `sqlAnywhereDataSource()` — apunta al servidor de DUTRIEC y no requiere cambios.
 
-### 4. Configurar credenciales
+### 4. Levantar el servidor
 
-Editar `src/main/resources/application.properties` con las credenciales de MariaDB y SQL Anywhere.
-
-### 5. Compilar y ejecutar
-
-```bash
-mvn clean compile
-mvnw spring-boot:run
+```cmd
+mvnw clean spring-boot:run
 ```
 
-Cuando aparezca `Started ApiRetencionesApplication` el servidor está listo en `http://localhost:8080`.
-
----
-
-## Acceso a la interfaz
-
-Abrir el navegador y entrar a:
-
+Esperá el mensaje:
 ```
-http://localhost:8080/index.html
+Started ApiRetencionesApplication in X seconds
+```
+
+### 5. Acceder al sistema
+
+Abrí el navegador en:
+```
+http://127.0.0.1:8080
 ```
 
 **Usuarios disponibles:**
 
-| Usuario | Contraseña |
-|---|---|
-| admin | dutriec2026 |
-| vgimenez | sifen2026 |
-| operador | ret2026 |
+| Usuario | Contraseña | Rol |
+|---|---|---|
+| soporte | (consultar al equipo) | SOPORTE |
+| admin | (consultar al equipo) | JEFE |
+| asistente | (consultar al equipo) | ASISTENTE |
+
+---
+
+## Colaborar con cambios
+
+El proyecto usa Git con el repo principal en `Nicoib25/api-retenciones`.
+
+### Traer cambios del equipo
+
+```cmd
+cd api-retenciones
+git fetch origin
+git log HEAD..origin/master --oneline
+git merge origin/master
+mvnw clean spring-boot:run
+```
+
+### Subir tus cambios
+
+```cmd
+git add .
+git commit -m "descripcion de los cambios"
+git push origin master
+```
 
 ---
 
@@ -92,141 +103,26 @@ http://localhost:8080/index.html
 ```
 api-retenciones/
 ├── src/main/java/com/dutriec/apiretenciones/
-│   ├── ApiRetencionesApplication.java   ← Clase principal
-│   ├── DataSourceConfig.java            ← Configuración SQL Anywhere + MariaDB
-│   ├── Factura.java                     ← Modelo de factura
-│   ├── FacturaController.java           ← Endpoints de facturas
-│   ├── FacturaRepository.java           ← Consultas SQL Anywhere
-│   ├── RetencionRepository.java         ← Operaciones MariaDB
-│   ├── DashboardController.java         ← Dashboard control de envíos
-│   ├── TesakaController.java            ← Generador JSON TESAKA
-│   ├── SifenRequest.java                ← DTO para el colega SIFEN
-│   └── Resultado.java                   ← Modelo de resultado
+│   ├── ApiRetencionesApplication.java   — Punto de entrada
+│   ├── DataSourceConfig.java            — Configuración de BD (SQL Anywhere + MariaDB)
+│   ├── Factura.java                     — Modelo de factura (SQL Anywhere)
+│   ├── FacturaRepository.java           — Queries a SQL Anywhere
+│   ├── FacturaController.java           — Endpoint POST /retenciones/enviar-lote
+│   ├── DashboardController.java         — Endpoints del dashboard y migraciones
+│   ├── RetencionRepository.java         — Queries a MariaDB
+│   └── TesakaController.java            — Lógica de generación TXT TESAKA
 ├── src/main/resources/
-│   ├── application.properties           ← Configuración
-│   └── static/                          ← Frontend HTML/JS/CSS
-│       ├── index.html
-│       ├── css/estilos.css
-│       └── js/retenciones.js
-├── libs/
-│   └── jconn3-11.0.jar                  ← Driver SQL Anywhere
-└── retenciones_sifen.sql                ← Script BD MariaDB
+│   ├── application.properties           — Configuración del servidor
+│   └── static/                          — Frontend (HTML, CSS, JS)
+└── retenciones_sifen.sql               — Script completo de la BD
 ```
 
 ---
 
-## Endpoints principales
+## Notas importantes
 
-| Método | Endpoint | Descripción |
-|---|---|---|
-| GET | `/retenciones/pendientes` | Facturas pendientes de SQL Anywhere |
-| POST | `/retenciones/enviar-lote` | Enviar retenciones al SIFEN |
-| GET | `/retenciones/dashboard` | Datos del dashboard desde MariaDB |
-| POST | `/retenciones/reenviar/{id}` | Reenviar retención con error |
-| POST | `/retenciones/generar-tesaka` | Generar JSON para TESAKA (DNIT) |
-
----
-
-## Endpoint del colega (SIFEN)
-
-El sistema envía retenciones al endpoint del colega:
-
-```
-POST /retenciones/evento/xml
-Content-Type: application/json
-```
-
-**Caso factura electrónica (con CDC):**
-```json
-{
-  "facturaElectronica": true,
-  "cdcDte": "CDC de 44 dígitos del proveedor",
-  "rucRetenedor": "80015056-2",
-  "rucContribuyente": "RUC del proveedor",
-  "numTimbre": "timbrado de retención DUTRIEC",
-  "establecimiento": "001",
-  "puntoExpedicion": "001",
-  "numDocRet": "0000001",
-  "codControlRet": "ABC123XYZ",
-  "fechaEmisionRet": "2026-06-17T08:00:00",
-  "montoRetencion": 1500000,
-  "baseImponible": 5000000,
-  "porcentajeRetencion": 30,
-  "concepto": "Retenciones en carácter de pago a cuenta"
-}
-```
-
-**Caso factura física (sin CDC):**
-```json
-{
-  "facturaElectronica": false,
-  "numFacturaFisica": "001-001-0000456",
-  "rucRetenedor": "80015056-2",
-  "rucContribuyente": "RUC del proveedor",
-  ...
-}
-```
-
----
-
-## JSON para TESAKA (DNIT)
-
-El endpoint `POST /retenciones/generar-tesaka` genera un archivo JSON compatible con TESAKA.
-
-**Body:**
-```json
-{ "ids": [3195, 3196, 3197] }
-```
-
-**Respuesta:** descarga automática del archivo `tesaka_YYYYMMDD.json`
-
----
-
-## Base de datos MariaDB
-
-**BD:** `retenciones_sifen` — puerto 3306
-
-| Tabla | Descripción |
-|---|---|
-| `retenciones_enviadas` | Registro de todas las retenciones procesadas |
-| `log_envios` | Log de envíos al colega |
-| `configuracion` | Parámetros del sistema (timbrado, etc.) |
-
-**Estados posibles en `retenciones_enviadas`:**
-
-| Estado | Descripción |
-|---|---|
-| `PENDIENTE` | Guardado, sin enviar |
-| `ENVIADO` | Enviado al colega, XML generado |
-| `APROBADO` | Aprobado por SIFEN |
-| `ERROR` | Error en el envío |
-| `FISICA_MANUAL` | Factura física, retención manual |
-| `TESAKA_GENERADO` | JSON generado para TESAKA |
-| `SIMULADO` | Modo prueba |
-
----
-
-## Pendientes para producción
-
-| Item | Responsable |
-|---|---|
-| URL real del endpoint del colega | Colega confirma |
-| Columna `cdc_proveedor` en SQL Anywhere | DBA |
-| Permiso SELECT en `proveedores_migra` | DBA |
-| Timbrado de retención de DUTRIEC | Trámite ante la SET |
-| Certificado digital para firma | SET — ambiente de pruebas |
-
----
-
-## Configuración del colega en application.properties
-
-```properties
-# URL del endpoint del colega
-sifen.colega.url=http://localhost:8081
-
-# false = simulación, true = envío real
-sifen.colega.activo=false
-
-# Timbrado (cargar también en tabla configuracion de MariaDB)
-# sifen.timbrado.retencion=12345678
-```
+- El sistema usa **dos bases de datos**: SQL Anywhere (solo lectura, servidor DUTRIEC) y MariaDB (local, escritura).
+- Para cambios en archivos **Java**: reiniciar con `mvnw clean spring-boot:run`.
+- Para cambios en **HTML/CSS**: reiniciar con `mvnw clean spring-boot:run`.
+- Para cambios en **JS**: solo recargar el navegador con **Ctrl+Shift+R**.
+- Acceder siempre por `http://127.0.0.1:8080` (no `localhost`).
