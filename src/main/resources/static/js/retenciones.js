@@ -318,6 +318,11 @@ function cargarFacturasInterno() {
           montoImpuesto5: f.montoImpuesto5 || 0,
           tasa: calcularTasa(f), retGS: retGS, retUSD: retUSD, esUSD: esUSD,
           timbrado: f.timbrado || "", fecha: f.fecha || "",
+          // Retención ya calculada en el ERP (ordenes_detalle). Puede ser null/0.
+          montoRetencionErp: (f.montoRetencionErp != null) ? Number(f.montoRetencionErp) : null,
+          tieneRetencionErp: (f.montoRetencionErp != null && Number(f.montoRetencionErp) > 0),
+          // Monto total de la factura desde ordenes_detalle (fuente ERP).
+          montoErp: (f.montoErp != null) ? Number(f.montoErp) : null,
           totalCompra: totalCompra, aplicaRetencion: aplicaRetencion,
           estado: (existente && existente.estado === "PROCESADO") ? "PROCESADO" : "PENDIENTE",
           motivo: ""
@@ -1114,7 +1119,10 @@ function renderTabla() {
     var tieneOrdenPago = !!f.compra;
     // Validar tipo de cambio en USD: no puede superar 4 dígitos (máx 9.999)
     var tcValido = !f.esUSD || (f.tipoCambio > 0 && f.tipoCambio < 10000);
-    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && tieneOrdenPago && tcValido;
+    // Regla de negocio: la retención se toma de la BD (ordenes_detalle).
+    // Sin monto de retención cargado, la factura NO puede descargarse.
+    var puedeSel = (f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH")
+      && tieneOrdenPago && tcValido && f.tieneRetencionErp;
     var checked  = seleccionados.indexOf(f.id) !== -1 ? "checked" : "";
     var disabled = !puedeSel ? "disabled" : "";
     // Celda de orden de pago con aviso visual cuando no tiene
@@ -1129,25 +1137,45 @@ function renderTabla() {
       tcAviso = "<div style='font-size:10px;color:#a32d2d;font-weight:600' " +
         "title='El tipo de cambio supera 4 dígitos. Verificar la cotización cargada en el sistema.'>⚠ TC inválido</div>";
     }
-    // Mostrar el desglose: monto total (IVA incluido), IVA, retención
-    var impuesto = (f.montoImpuesto || 0) + (f.montoImpuesto5 || 0);
-    var montoTotal = f.monto + impuesto; // f.monto = base sin IVA
+    // Monto total: se toma de ordenes_detalle (fuente ERP). Si no viene,
+    // se cae al desglose de facturas_recibidas (base + IVA) como respaldo.
+    var montoTotal, impuesto;
+    if (f.montoErp != null && f.montoErp > 0) {
+      // El monto del ERP viene con IVA 10% incluido. El IVA se desglosa
+      // desde ese mismo monto: iva = monto / 11 (base = monto - iva).
+      montoTotal = f.montoErp;
+      impuesto = Math.round(montoTotal / 11);
+    } else {
+      // Respaldo: desglose de facturas_recibidas.
+      impuesto = (f.montoImpuesto || 0) + (f.montoImpuesto5 || 0);
+      montoTotal = f.monto + impuesto; // f.monto = base sin IVA
+    }
     var montoHtml = f.esUSD
       ? "USD " + formatearUSD(montoTotal) + "<div style='font-size:10px;color:#444;font-weight:600'>TC: " + formatearNumero(f.tipoCambio) + "</div>" + tcAviso
       : "Gs. " + formatearNumero(montoTotal);
     var ivaHtml = f.esUSD
       ? "USD " + formatearUSD(impuesto)
       : "Gs. " + formatearNumero(impuesto);
-    var retHtml = f.esUSD
-      ? "USD " + formatearUSD(f.retUSD) + "<div style='font-size:10px;color:#444;font-weight:600'>Gs. " + formatearNumero(f.retGS) + "</div>"
-      : "Gs. " + formatearNumero(f.retGS);
+    // La retención se toma de la BD (ordenes_detalle). Ya no se calcula el 30%.
+    var retHtml;
+    if (f.tieneRetencionErp) {
+      retHtml = "Gs. " + formatearNumero(Math.round(f.montoRetencionErp));
+    } else {
+      // Sin retención en la BD: no hay valor que enviar y no se puede descargar.
+      retHtml = "<div style='display:inline-flex;align-items:center;gap:4px;color:#a32d2d;" +
+        "font-size:11px;font-weight:600' " +
+        "title='Esta factura no tiene monto de retención cargado en la orden de pago (ordenes_detalle). " +
+        "No se puede generar el TXT hasta que se cargue la retención.'>⚠ Sin retención</div>";
+    }
     var btnAccion = "";
     if (f.estado === "RECHAZADO") {
       btnAccion = "<button class='btn-reenviar' onclick='reenviar(" + f.id + ")' style='margin-bottom:4px;display:block'>Reenviar</button>" +
         "<button class='btn-reenviar' onclick='verDetalle(" + f.id + ")' style='color:#633806;border-color:#FAC775'>Ver detalle</button>";
     }
     var fechaEmision = new Date().toLocaleDateString("es-PY");
-    html += "<tr>" +
+    // Fondo tenue en filas sin retención informada en el ERP, para escaneo rápido.
+    var estiloFila = f.tieneRetencionErp ? "" : " style='background:#fdf6f6'";
+    html += "<tr" + estiloFila + ">" +
       "<td><input type='checkbox' " + checked + " " + disabled + " onchange='toggleSeleccion(" + f.id + ", this)'></td>" +
       "<td style='font-family:monospace;font-size:11px'>" + f.nro + "</td>" +
       "<td><strong>" + f.proveedor + "</strong><div style='font-size:10px;color:#888'>" + f.ruc + "</div></td>" +
@@ -1224,8 +1252,9 @@ function seleccionarTodas() {
     if (buscar !== "" && f.proveedor.toLowerCase().indexOf(buscar) === -1 && f.ruc.indexOf(buscar) === -1 && String(f.compra || "").indexOf(buscar) === -1 && (f.nro || "").indexOf(buscar) === -1) continue;
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
     if (soloConOrden && !f.compra) continue;
-    // Seleccionar todas las pendientes visibles CON orden de pago y TC válido
-    if ((f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.compra) {
+    // Seleccionar todas las pendientes visibles CON orden de pago, TC válido
+    // y CON retención cargada en el ERP (sin retención no se puede descargar).
+    if ((f.estado === "PENDIENTE" || f.estado === "PENDIENTE_AUTH") && f.compra && f.tieneRetencionErp) {
       var esUSD = (f.moneda === "DL" || f.moneda === "USD");
       var tcOk = !esUSD || (f.tipoCambio > 0 && f.tipoCambio < 10000);
       if (tcOk) seleccionados.push(f.id);

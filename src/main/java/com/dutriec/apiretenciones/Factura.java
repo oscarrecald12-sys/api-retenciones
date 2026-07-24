@@ -18,6 +18,8 @@ public class Factura {
     private String estado;
     private Long compra;
     private Long ordenPago;    // Nro de orden de pago (de ordenes_detalle)
+    private Double montoRetencionErp; // monto_retencion ya calculado en ordenes_detalle (fuente ERP)
+    private Double montoErp; // monto total de la factura en ordenes_detalle (fuente ERP)
     private String formaPago; // C=Contado, E=Crédito
     private String comentarios; // Concepto/descripción de la factura
     private String correo;      // mail del proveedor (de personas)
@@ -33,6 +35,12 @@ public class Factura {
 
     public Long getOrdenPago() { return ordenPago; }
     public void setOrdenPago(Long ordenPago) { this.ordenPago = ordenPago; }
+
+    public Double getMontoRetencionErp() { return montoRetencionErp; }
+    public void setMontoRetencionErp(Double montoRetencionErp) { this.montoRetencionErp = montoRetencionErp; }
+
+    public Double getMontoErp() { return montoErp; }
+    public void setMontoErp(Double montoErp) { this.montoErp = montoErp; }
 
     public String getFormaPago() { return formaPago; }
     public void setFormaPago(String formaPago) { this.formaPago = formaPago; }

@@ -20,6 +20,8 @@ public class FacturaRepository {
     // Trae todas las facturas pendientes
     public List<Factura> obtenerPendientes() {
 
+        // ordenes_detalle tiene UNA fila por factura, así que se hace un JOIN
+        // directo y se toman orden, monto y monto_retencion tal cual (sin sumar).
         String sql
                 = "SELECT fr.factura, fr.factura_fisica, fr.fecha, "
                 + "fr.compra, fr.forma_pago, "
@@ -29,9 +31,8 @@ public class FacturaRepository {
                 + "fr.monto_gravado_5, fr.monto_impuesto_5, "
                 + "fr.monto_exento, fr.moneda, "
                 + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios, "
-                // Número de orden de pago: viene de ordenes_detalle
-                // (una orden puede tener varias facturas del mismo proveedor)
-                + "od.orden AS orden_pago "
+                // Número de orden de pago, monto y retención informados en el ERP.
+                + "od.orden AS orden_pago, od.monto AS monto_erp, od.monto_retencion "
                 + "FROM facturas_recibidas fr "
                 + "JOIN personas p ON p.persona = fr.proveedor "
                 + "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura "
@@ -59,7 +60,7 @@ public class FacturaRepository {
                 + "fr.monto_gravado_5, fr.monto_impuesto_5, "
                 + "fr.monto_exento, fr.moneda, "
                 + "fr.factor_cambio, fr.timbrado, fr.estado, fr.comentarios, "
-                + "od.orden AS orden_pago "
+                + "od.orden AS orden_pago, od.monto AS monto_erp, od.monto_retencion "
                 + "FROM facturas_recibidas fr "
                 + "JOIN personas p ON p.persona = fr.proveedor "
                 + "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura "
@@ -89,6 +90,12 @@ public class FacturaRepository {
 
         long ordenVal = rs.getLong("orden_pago");
         f.setOrdenPago(rs.wasNull() ? null : ordenVal);
+
+        double retErpVal = rs.getDouble("monto_retencion");
+        f.setMontoRetencionErp(rs.wasNull() ? null : retErpVal);
+
+        double montoErpVal = rs.getDouble("monto_erp");
+        f.setMontoErp(rs.wasNull() ? null : montoErpVal);
 
         f.setFormaPago(rs.getString("forma_pago"));
 

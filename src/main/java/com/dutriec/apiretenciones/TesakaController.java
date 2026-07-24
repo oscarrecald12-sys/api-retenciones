@@ -99,6 +99,14 @@ public class TesakaController {
         }
 
         try {
+            // Seguridad: remover cualquier campo interno que no deba ir a Tesaka.
+            for (Map<String, Object> reg : registros) {
+                Object retObj = reg.get("retencion");
+                if (retObj instanceof Map) {
+                    ((Map<?, ?>) retObj).remove("_montoRetencionErp");
+                    ((Map<?, ?>) retObj).remove("_montoErp");
+                }
+            }
             String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(registros);
             byte[] bytes = json.getBytes("UTF-8");
 
@@ -128,9 +136,14 @@ public class TesakaController {
             "fr.monto_gravado, fr.monto_gravado_5, fr.monto_exento, " +
             "fr.monto_impuesto, fr.monto_impuesto_5, " +
             "fr.comentarios, fr.timbrado, fr.factor_cambio, fr.condicion_compra, fr.cuotas, " +
-            "p.razon_social, p.ruc, p.direccion, p.telefonos, p.mail " +
+            "p.razon_social, p.ruc, p.direccion, p.telefonos, p.mail, " +
+            // Monto y retencion tomados del ERP (ordenes_detalle), una fila por
+            // factura. Son la fuente de verdad; el desglose por tasa se arma
+            // aparte con los montos de facturas_recibidas.
+            "od.monto AS monto_erp, od.monto_retencion AS monto_retencion_erp " +
             "FROM facturas_recibidas fr " +
             "JOIN personas p ON fr.proveedor = p.persona " +
+            "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura " +
             "WHERE fr.factura = ?", idFactura
         );
         // NOTA: si facturas_recibidas no tiene condicion_compra/cuotas,
@@ -167,27 +180,39 @@ public class TesakaController {
         String descripcionBase = f.get("comentarios") != null
                 ? String.valueOf(f.get("comentarios")) : null;
 
+        // Monto de la factura desde el ERP (ordenes_detalle). Es la fuente de
+        // verdad, viene con IVA 10% incluido.
+        double montoErp = toDouble(f.get("monto_erp"));
+
         // ---- DETALLE ----
-        // FIX: segun la especificacion, precioUnitario para importes gravados
-        // es IVA INCLUIDO (Tesaka calcula la base del IVA como precio/11 o /21).
-        // Antes se enviaba solo el gravado sin IVA y la retencion salia menor.
+        // El monto del ERP es siempre gravado 10% con IVA incluido. Tesaka
+        // calcula la base del IVA como precio/11. Se envia una sola linea 10%
+        // con el monto del ERP como precioUnitario.
+        // Si por algun motivo no viniera el monto del ERP, se cae al desglose
+        // de facturas_recibidas como respaldo (comportamiento anterior).
         List<Map<String, Object>> detalle = new ArrayList<>();
 
-        if (montoGravado10 > 0) {
+        if (montoErp > 0) {
             detalle.add(itemDetalle("10",
-                redondear(montoGravado10 + montoImpuesto),
+                redondear(montoErp),
                 descripcionBase != null ? descripcionBase : "Servicio/Compra gravado 10%"));
-        }
-        if (montoGravado5 > 0) {
-            detalle.add(itemDetalle("5",
-                redondear(montoGravado5 + montoImpuesto5),
-                descripcionBase != null ? descripcionBase : "Servicio/Compra gravado 5%"));
-        }
-        if (montoExento > 0) {
-            // FIX: la tasa exenta es "0", no "EXENTO"
-            detalle.add(itemDetalle("0",
-                redondear(montoExento),
-                descripcionBase != null ? descripcionBase : "Servicio/Compra exento"));
+        } else {
+            if (montoGravado10 > 0) {
+                detalle.add(itemDetalle("10",
+                    redondear(montoGravado10 + montoImpuesto),
+                    descripcionBase != null ? descripcionBase : "Servicio/Compra gravado 10%"));
+            }
+            if (montoGravado5 > 0) {
+                detalle.add(itemDetalle("5",
+                    redondear(montoGravado5 + montoImpuesto5),
+                    descripcionBase != null ? descripcionBase : "Servicio/Compra gravado 5%"));
+            }
+            if (montoExento > 0) {
+                // FIX: la tasa exenta es "0", no "EXENTO"
+                detalle.add(itemDetalle("0",
+                    redondear(montoExento),
+                    descripcionBase != null ? descripcionBase : "Servicio/Compra exento"));
+            }
         }
         // Sin fallback con monto 0: si no hay montos, la validacion lo rechaza
         // con un mensaje claro en vez de generar un registro invalido.
@@ -214,8 +239,23 @@ public class TesakaController {
         retencion.put("rentaCabezasCantidad", 0);
         retencion.put("rentaToneladasBase", 0);
         retencion.put("rentaToneladasCantidad", 0);
-        retencion.put("ivaPorcentaje5",  montoGravado5  > 0 ? 30 : 0);
-        retencion.put("ivaPorcentaje10", montoGravado10 > 0 ? 30 : 0);
+        // El detalle se arma al 10% desde el monto del ERP, así que se retiene
+        // IVA al 10%. Si no hay monto del ERP, se cae al desglose anterior.
+        if (montoErp > 0) {
+            retencion.put("ivaPorcentaje5", 0);
+            retencion.put("ivaPorcentaje10", 30);
+        } else {
+            retencion.put("ivaPorcentaje5",  montoGravado5  > 0 ? 30 : 0);
+            retencion.put("ivaPorcentaje10", montoGravado10 > 0 ? 30 : 0);
+        }
+        // Monto y retencion del ERP (fuente de verdad). Campos internos: se
+        // usan al guardar en MariaDB y se remueven antes de serializar a Tesaka.
+        if (f.get("monto_retencion_erp") != null) {
+            retencion.put("_montoRetencionErp", toDouble(f.get("monto_retencion_erp")));
+        }
+        if (f.get("monto_erp") != null) {
+            retencion.put("_montoErp", toDouble(f.get("monto_erp")));
+        }
 
         // ---- INFORMADO (proveedor) ----
         // FIX: para CONTRIBUYENTE, Tesaka rechaza valores en tipoIdentificacion,
@@ -340,6 +380,14 @@ public class TesakaController {
             errores.add(pref + "debe retener al menos IVA o Renta");
         }
 
+        // Regla de negocio: la retención se toma de la BD (ordenes_detalle).
+        // Sin monto de retención cargado, NO se permite generar/descargar el TXT.
+        Object retErpObj = ret.get("_montoRetencionErp");
+        double retErp = retErpObj != null ? toDouble(retErpObj) : 0;
+        if (retErp <= 0) {
+            errores.add(pref + "sin monto de retencion cargado en la orden de pago (ordenes_detalle) - no se puede generar el TXT");
+        }
+
         return errores;
     }
 
@@ -378,22 +426,36 @@ public class TesakaController {
 
             String monedaTesaka = String.valueOf(retencionM.get("moneda"));
 
-            // FIX: la retencion de IVA se calcula sobre el IMPUESTO, no sobre la base.
-            // precioUnitario es IVA incluido: impuesto10 = precio/11, impuesto5 = precio/21.
-            double base = 0, montoRetencion = 0;
-            int pctIva10 = (int) toDouble(retencionM.get("ivaPorcentaje10"));
-            int pctIva5  = (int) toDouble(retencionM.get("ivaPorcentaje5"));
-
+            // Suma del desglose por tasa (de facturas_recibidas), para control.
+            double baseDetalle = 0;
             for (Map<String, Object> item : detalle) {
-                double precio = toDouble(item.get("precioUnitario"));
-                String tasa = String.valueOf(item.get("tasaAplica"));
-                base += precio;
-                if ("10".equals(tasa)) {
-                    montoRetencion += (precio / 11.0) * pctIva10 / 100.0;
-                } else if ("5".equals(tasa)) {
-                    montoRetencion += (precio / 21.0) * pctIva5 / 100.0;
+                baseDetalle += toDouble(item.get("precioUnitario"));
+            }
+
+            // Monto: se toma del ERP (ordenes_detalle). Si no viene, se cae al
+            // desglose del detalle como respaldo. Se avisa si difieren.
+            Object montoErpObj = retencionM.get("_montoErp");
+            double base;
+            if (montoErpObj != null && toDouble(montoErpObj) > 0) {
+                base = redondear(toDouble(montoErpObj));
+                if (Math.abs(base - redondear(baseDetalle)) > 1.0) {
+                    System.err.println("[TESAKA] Factura " + idFactura +
+                        ": monto ERP (" + base + ") difiere del desglose de facturas_recibidas (" +
+                        redondear(baseDetalle) + "). Se guarda el del ERP.");
                 }
-                // tasa "0" (exento) no genera retencion de IVA
+            } else {
+                base = redondear(baseDetalle);
+            }
+
+            // La retención se toma EXCLUSIVAMENTE de la BD (ordenes_detalle).
+            // La validación previa ya garantiza que este valor es > 0; el guard
+            // aquí es defensivo por si se llegara a invocar por otra vía.
+            Object retErpObj = retencionM.get("_montoRetencionErp");
+            double retencionFinal = retErpObj != null ? redondear(toDouble(retErpObj)) : 0;
+            if (retencionFinal <= 0) {
+                System.err.println("[TESAKA] Factura " + idFactura +
+                    ": sin retencion en ERP, no se guarda.");
+                return;
             }
 
             mariaDb.update(
@@ -405,10 +467,14 @@ public class TesakaController {
                 transaccion.get("numeroComprobanteVenta"),
                 informado.get("ruc") + "-" + informado.get("dv"),
                 informado.get("nombre"),
-                redondear(base),
-                redondear(montoRetencion),
+                base,
+                retencionFinal,
                 monedaTesaka // FIX: antes hardcodeado "GS" aunque fuera USD
             );
+
+            // Limpieza: los campos internos no deben viajar en el JSON de Tesaka.
+            retencionM.remove("_montoRetencionErp");
+            retencionM.remove("_montoErp");
         } catch (Exception e) {
             System.err.println("Error guardando en MariaDB: " + e.getMessage());
         }
