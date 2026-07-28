@@ -1157,9 +1157,18 @@ function renderTabla() {
       ? "USD " + formatearUSD(impuesto)
       : "Gs. " + formatearNumero(impuesto);
     // La retención se toma de la BD (ordenes_detalle). Ya no se calcula el 30%.
+    // Se muestra en la moneda de la factura (USD o Gs), igual que monto e IVA.
     var retHtml;
     if (f.tieneRetencionErp) {
-      retHtml = "Gs. " + formatearNumero(Math.round(f.montoRetencionErp));
+      var ret = f.montoRetencionErp;
+      if (f.esUSD) {
+        // En USD se muestra el valor y su equivalente en Gs al tipo de cambio.
+        var retGsEquiv = Math.round(ret * (f.tipoCambio || 0));
+        retHtml = "USD " + formatearUSD(ret) +
+          "<div style='font-size:10px;color:#444;font-weight:600'>Gs. " + formatearNumero(retGsEquiv) + "</div>";
+      } else {
+        retHtml = "Gs. " + formatearNumero(Math.round(ret));
+      }
     } else {
       // Sin retención en la BD: no hay valor que enviar y no se puede descargar.
       retHtml = "<div style='display:inline-flex;align-items:center;gap:4px;color:#a32d2d;" +
