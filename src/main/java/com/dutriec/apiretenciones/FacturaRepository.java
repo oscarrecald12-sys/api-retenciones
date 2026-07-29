@@ -37,7 +37,10 @@ public class FacturaRepository {
                 + "JOIN personas p ON p.persona = fr.proveedor "
                 + "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura "
                 + "WHERE fr.estado = 'A' "
-                + "ORDER BY fr.fecha DESC";
+                // Ordena por número de orden de pago descendente (las más
+                // recientes primero). Las facturas sin orden quedan al final.
+                + "ORDER BY CASE WHEN od.orden IS NULL THEN 1 ELSE 0 END, "
+                + "od.orden DESC, fr.fecha DESC";
 
         return jdbc.query(sql, new RowMapper<Factura>() {
             @Override
