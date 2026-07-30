@@ -613,7 +613,10 @@ function renderDashboard() {
     if (ret > 0 && base > 0) {
       iva = ret / (30 / 100);
     }
-    var total = base + iva;
+    // FIX: baseImponible (columna "monto" en MariaDB) ya viene con el IVA
+    // incluido (ver FacturaController.java). Antes se sumaba el IVA de
+    // nuevo acá, duplicándolo en el total mostrado. El total ES base.
+    var total = base;
 
     html +=
       "<td style='font-family:monospace;font-size:11px'>" + (r.numDocRet || "—") + indicadorRechazo + "</td>" +
@@ -1412,7 +1415,9 @@ function renderHistorialAprobadas() {
         var base = Number(r.baseImponible) || 0;
         var ret = Number(r.montoRetencion) || 0;
         var iva = ret > 0 ? ret / 0.30 : 0;
-        var total = base + iva;
+        // FIX: mismo problema que en la tabla de Control de envíos —
+        // baseImponible ya incluye el IVA, no hay que volver a sumarlo.
+        var total = base;
         var fechaStr = r.fechaEnvio ? String(r.fechaEnvio) : "";
         var mes = fechaStr.length >= 7 ? fechaStr.substring(5, 7) : "";
 

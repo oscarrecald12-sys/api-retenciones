@@ -99,19 +99,39 @@ public class TesakaController {
         }
 
         try {
-            // Seguridad: remover cualquier campo interno que no deba ir a Tesaka.
+            // Nombre de archivo descriptivo: proveedor + orden de pago (del 1er registro).
+            String nombreProv = "varios";
+            String nroOrden = "";
+            Object metaObj = registros.get(0).get("_meta");
+            if (metaObj instanceof Map) {
+                Map<?, ?> meta = (Map<?, ?>) metaObj;
+                String prov = String.valueOf(meta.get("proveedor"));
+                if (prov != null && !prov.isEmpty() && !"null".equals(prov)) {
+                    nombreProv = prov.replaceAll("[^a-zA-Z0-9]", "_");
+                    if (nombreProv.length() > 30) nombreProv = nombreProv.substring(0, 30);
+                }
+                String op = String.valueOf(meta.get("ordenPago"));
+                if (op != null && !op.isEmpty() && !"null".equals(op)) {
+                    nroOrden = "_OP" + op;
+                }
+            }
+            String cantSuffix = registros.size() > 1 ? "_" + registros.size() + "ret" : "";
+
+            // Seguridad: remover campos internos que no deben ir a Tesaka.
             for (Map<String, Object> reg : registros) {
                 Object retObj = reg.get("retencion");
                 if (retObj instanceof Map) {
                     ((Map<?, ?>) retObj).remove("_montoRetencionErp");
                     ((Map<?, ?>) retObj).remove("_montoErp");
                 }
+                reg.remove("_meta");
             }
             String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(registros);
             byte[] bytes = json.getBytes("UTF-8");
 
             // Tesaka importa archivos .txt con contenido JSON
-            String nombreArchivo = "tesaka_" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".txt";
+            String nombreArchivo = "retenciones_" + nombreProv + nroOrden + cantSuffix + "_"
+                    + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + ".txt";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.TEXT_PLAIN);
@@ -140,7 +160,7 @@ public class TesakaController {
             // Monto y retencion tomados del ERP (ordenes_detalle), una fila por
             // factura. Son la fuente de verdad; el desglose por tasa se arma
             // aparte con los montos de facturas_recibidas.
-            "od.monto AS monto_erp, od.monto_retencion AS monto_retencion_erp " +
+            "od.orden AS orden_pago, od.monto AS monto_erp, od.monto_retencion AS monto_retencion_erp " +
             "FROM facturas_recibidas fr " +
             "JOIN personas p ON fr.proveedor = p.persona " +
             "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura " +
@@ -289,6 +309,25 @@ public class TesakaController {
             cuotas = Math.max(1, (int) toDouble(f.get("cuotas")));
         }
 
+        // ⚠ REGLA FISCAL (evita multa de la DNIT por comunicacion tardia):
+        // Si la condicion es CONTADO y la factura tiene MAS DE 7 DIAS, la DNIT
+        // multa por comunicacion tardia de retencion. En CREDITO la fecha no
+        // importa. Por eso, si la factura es vieja, se fuerza CREDITO.
+        if ("CONTADO".equals(condicion) && fechaFactura != null && !fechaFactura.isEmpty()) {
+            try {
+                LocalDate fFactura = LocalDate.parse(fechaFactura);
+                long dias = java.time.temporal.ChronoUnit.DAYS.between(fFactura, LocalDate.now());
+                if (dias > 7) {
+                    condicion = "CREDITO";
+                    cuotas = Math.max(1, cuotas);
+                    System.out.println("[TESAKA] Factura " + idFactura + " (" + fechaFactura +
+                        ") tiene " + dias + " dias - forzada a CREDITO para evitar multa por comunicacion tardia");
+                }
+            } catch (Exception ex) {
+                // Si la fecha no se puede parsear, se deja la condicion original.
+            }
+        }
+
         Map<String, Object> transaccion = new LinkedHashMap<>();
         transaccion.put("condicionCompra", condicion);
         transaccion.put("cuotas", cuotas);
@@ -313,6 +352,12 @@ public class TesakaController {
         registro.put("transaccion", transaccion);
         registro.put("detalle", detalle);
         registro.put("retencion", retencion);
+        // Campo interno para nombrar el archivo (proveedor + orden). Se remueve
+        // antes de serializar, junto con los otros campos internos.
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("ordenPago", f.get("orden_pago") != null ? String.valueOf(f.get("orden_pago")) : "");
+        meta.put("proveedor", f.get("razon_social") != null ? String.valueOf(f.get("razon_social")).trim() : "");
+        registro.put("_meta", meta);
 
         return registro;
     }
