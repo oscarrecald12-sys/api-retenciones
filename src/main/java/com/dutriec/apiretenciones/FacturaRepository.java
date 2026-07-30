@@ -13,6 +13,11 @@ import java.util.List;
 @Repository
 public class FacturaRepository {
 
+    // Fecha de corte: solo se traen facturas desde esta fecha en adelante.
+    // La app trabaja con facturas de 2026 en adelante. Para cambiar el corte,
+    // modificar solo esta constante.
+    private static final String FECHA_CORTE = "2026-01-01";
+
     @Autowired
     @Qualifier("sqlAnywhereJdbcTemplate")
     private JdbcTemplate jdbc;
@@ -37,6 +42,8 @@ public class FacturaRepository {
                 + "JOIN personas p ON p.persona = fr.proveedor "
                 + "LEFT JOIN ordenes_detalle od ON od.factura = fr.factura "
                 + "WHERE fr.estado = 'A' "
+                // Solo facturas desde la fecha de corte (2026 en adelante).
+                + "AND fr.fecha >= ? "
                 // Ordena por número de orden de pago descendente (las más
                 // recientes primero). Las facturas sin orden quedan al final.
                 + "ORDER BY CASE WHEN od.orden IS NULL THEN 1 ELSE 0 END, "
@@ -48,7 +55,7 @@ public class FacturaRepository {
                     throws SQLException {
                 return mapearFactura(rs);
             }
-        });
+        }, FECHA_CORTE);
     }
 
     // Trae una factura por ID

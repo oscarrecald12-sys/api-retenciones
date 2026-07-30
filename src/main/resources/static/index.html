@@ -108,24 +108,24 @@
         <!-- FILTROS Y ACCIONES -->
         <div class="barra-acciones">
           <div class="filtros">
-            <input type="text" id="filtro-buscar" placeholder="Buscar proveedor, RUC o Nº orden..." oninput="renderTabla()">
-            <select id="filtro-mes" onchange="renderTabla()">
+            <input type="text" id="filtro-buscar" placeholder="Buscar proveedor, RUC o Nº orden..." oninput="renderTablaDebounced()">
+            <select id="filtro-mes" onchange="renderTablaReset()">
               <option value="">Todos los meses</option>
-              <option value="01">Enero 2026</option>
-              <option value="02">Febrero 2026</otodosption>
-              <option value="03">Marzo 2026</option>
-              <option value="04">Abril 2026</option>
-              <option value="05">Mayo 2026</option>
-              <option value="06">Junio 2026</option>
-              <option value="07">Julio 2026</option>
-              <option value="08">Agosto 2026</option>
-              <option value="09">Septiembre 2026</option>
-              <option value="10">Octubre 2026</option>
-              <option value="11">Noviembre 2026</option>
-              <option value="12">Diciembre 2026</option>
+              <option value="01">Enero </option>
+              <option value="02">Febrero</otodosption>
+              <option value="03">Marzo </option>
+              <option value="04">Abril </option>
+              <option value="05">Mayo </option>
+              <option value="06">Junio </option>
+              <option value="07">Julio </option>
+              <option value="08">Agosto </option>
+              <option value="09">Septiembre </option>
+              <option value="10">Octubre </option>
+              <option value="11">Noviembre </option>
+              <option value="12">Diciembre </option>
             </select>
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#333;cursor:pointer;padding:6px 12px;border:1px solid #ddd;border-radius:4px;background:#fff;white-space:nowrap;user-select:none">
-              <input type="checkbox" id="filtro-con-orden" onchange="renderTabla()" style="width:14px !important;height:14px !important;margin:0 !important;padding:0 !important;cursor:pointer;flex-shrink:0">
+              <input type="checkbox" id="filtro-con-orden" onchange="renderTablaReset()" style="width:14px !important;height:14px !important;margin:0 !important;padding:0 !important;cursor:pointer;flex-shrink:0">
               Solo con orden de pago
             </label>
           </div>
@@ -152,8 +152,8 @@
                 <th>Moneda</th>
                 <th class="der">Monto Total</th>
                 <th class="der">IVA</th>
-                <th class="der">Retención 30%</th>
-                <th>Fecha Emisión</th>
+                <th class="der">Retención</th>
+                <th>Fecha Factura</th>
                 <th>Estado</th>
               </tr>
             </thead>

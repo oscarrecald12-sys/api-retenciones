@@ -1102,12 +1102,38 @@ function obtenerMesFactura(fecha) {
   return "";
 }
 
+// Debounce de la búsqueda: espera a que el usuario deje de tipear (250ms)
+// antes de filtrar, para no recorrer miles de facturas en cada tecla.
+var _debounceBusqueda = null;
+function renderTablaDebounced() {
+  if (_debounceBusqueda) clearTimeout(_debounceBusqueda);
+  _debounceBusqueda = setTimeout(function() {
+    _filasVisibles = LIMITE_FILAS; // resetear el "ver más" al cambiar la búsqueda
+    renderTabla();
+  }, 250);
+}
+
+// Límite de filas renderizadas de una vez (mejora el rendimiento con miles
+// de facturas). El botón "ver más" aumenta este número.
+var LIMITE_FILAS = 100;
+var _filasVisibles = LIMITE_FILAS;
+function verMasFilas() {
+  _filasVisibles += LIMITE_FILAS;
+  renderTabla();
+}
+
+// Resetea el "ver más" y renderiza (para filtros de mes / checkbox).
+function renderTablaReset() {
+  _filasVisibles = LIMITE_FILAS;
+  renderTabla();
+}
+
 function renderTabla() {
   var buscar = document.getElementById("filtro-buscar").value.toLowerCase();
   var mesFiltro = document.getElementById("filtro-mes").value;
   var soloConOrden = document.getElementById("filtro-con-orden").checked;
   var tbody = document.getElementById("cuerpo-tabla");
-  var html = "", encontrados = 0;
+  var html = "", encontrados = 0, renderizados = 0;
   for (var i = 0; i < facturas.length; i++) {
     var f = facturas[i];
     if (pestanaActual !== "todas" && f.estado !== pestanaActual) continue;
@@ -1115,6 +1141,11 @@ function renderTabla() {
     if (mesFiltro !== "" && obtenerMesFactura(f.fecha) !== mesFiltro) continue;
     if (soloConOrden && !f.compra) continue;
     encontrados++;
+    // Solo se renderizan las primeras _filasVisibles coincidencias. El resto
+    // se cuenta (para el "ver más") pero no se genera HTML, para no trabar el
+    // navegador cuando hay miles de facturas.
+    if (renderizados >= _filasVisibles) continue;
+    renderizados++;
     // Bloquear selección si la factura NO tiene orden de pago asignada
     var tieneOrdenPago = !!f.compra;
     // Validar tipo de cambio en USD: no puede superar 4 dígitos (máx 9.999)
@@ -1181,7 +1212,8 @@ function renderTabla() {
       btnAccion = "<button class='btn-reenviar' onclick='reenviar(" + f.id + ")' style='margin-bottom:4px;display:block'>Reenviar</button>" +
         "<button class='btn-reenviar' onclick='verDetalle(" + f.id + ")' style='color:#633806;border-color:#FAC775'>Ver detalle</button>";
     }
-    var fechaEmision = new Date().toLocaleDateString("es-PY");
+    // Fecha real de la factura (antes mostraba la fecha de hoy).
+    var fechaEmision = f.fecha ? formatearFecha(f.fecha) : "—";
     // Fondo tenue en filas sin retención informada en el ERP, para escaneo rápido.
     var estiloFila = f.tieneRetencionErp ? "" : " style='background:#fdf6f6'";
     html += "<tr" + estiloFila + ">" +
@@ -1199,6 +1231,15 @@ function renderTabla() {
       "</tr>";
   }
   if (encontrados === 0) html = "<tr><td colspan='10' style='text-align:center;padding:2rem;color:#aaa'>No hay facturas en este estado</td></tr>";
+  // Si hay más coincidencias que las renderizadas, ofrecer "ver más".
+  if (encontrados > renderizados) {
+    var restantes = encontrados - renderizados;
+    html += "<tr><td colspan='10' style='text-align:center;padding:1rem;background:#fafafa'>" +
+      "<span style='color:#666;font-size:12px'>Mostrando " + renderizados + " de " + encontrados + " facturas. </span>" +
+      "<button onclick='verMasFilas()' style='margin-left:8px;padding:6px 14px;border:1px solid #ccc;" +
+      "border-radius:6px;background:#fff;cursor:pointer;font-weight:600'>Ver " +
+      Math.min(LIMITE_FILAS, restantes) + " más</button></td></tr>";
+  }
   tbody.innerHTML = html;
   actualizarStats();
   actualizarInfoSeleccion();
@@ -1279,6 +1320,7 @@ function actualizarInfoSeleccion() {
 }
 function cambiarPestana(nombre, elemento) {
   pestanaActual = nombre; seleccionados = [];
+  _filasVisibles = LIMITE_FILAS; // resetear "ver más" al cambiar de pestaña
   var pestanas = document.querySelectorAll("#vista-facturas .pestana");
   for (var i = 0; i < pestanas.length; i++) pestanas[i].classList.remove("activa");
   elemento.classList.add("activa");
@@ -1300,7 +1342,7 @@ function cambiarPestana(nombre, elemento) {
       theadFact.innerHTML =
         "<th style='width:36px'></th>" +
         "<th>Nº Factura</th><th>Proveedor / RUC</th><th>Orden Pago</th><th>Moneda</th>" +
-        "<th class='der'>Monto Total</th><th class='der'>IVA</th><th class='der'>Retención 30%</th>" +
+        "<th class='der'>Monto Total</th><th class='der'>IVA</th><th class='der'>Retención</th>" +
         "<th>Fecha Emisión</th><th>Estado</th>";
     }
     document.getElementById("cuerpo-tabla").parentElement.style.display = "";
