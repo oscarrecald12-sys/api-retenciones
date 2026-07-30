@@ -108,10 +108,27 @@ public class FacturaController {
                 // ---- Generar correlativo ----
                 String numDocRet = retencionRepo.generarNumDocRet();
 
-                // ---- Calcular retención (30% IVA) ----
+                // ---- Monto y retención: fuente de verdad = ordenes_detalle ----
+                // Se guarda el monto de ordenes_detalle (con IVA incluido) y la
+                // retención ya calculada por el ERP. Si por algún motivo no viene
+                // el dato del ERP, se cae al cálculo anterior como respaldo.
                 double montoGravado  = factura.getMontoGravado()  != null ? factura.getMontoGravado()  : 0;
                 double montoImpuesto = factura.getMontoImpuesto() != null ? factura.getMontoImpuesto() : 0;
-                double retencion     = Math.round(montoImpuesto * 0.30);
+
+                double montoAGuardar;
+                double retencion;
+                if (factura.getMontoErp() != null && factura.getMontoErp() > 0) {
+                    // Monto de ordenes_detalle (con IVA). Es lo que va al TXT.
+                    montoAGuardar = factura.getMontoErp();
+                    // Retención del ERP si viene; si no, 30% del IVA como respaldo.
+                    retencion = (factura.getMontoRetencionErp() != null && factura.getMontoRetencionErp() > 0)
+                            ? factura.getMontoRetencionErp()
+                            : Math.round(montoImpuesto * 0.30);
+                } else {
+                    // Respaldo: comportamiento anterior (monto gravado sin IVA).
+                    montoAGuardar = montoGravado;
+                    retencion = Math.round(montoImpuesto * 0.30);
+                }
 
                 // OPTIMIZACIÓN: los datos del proveedor ya vienen en obtenerPorId
                 // (antes se hacía una SEGUNDA query idéntica a SQL Anywhere solo para
@@ -139,7 +156,7 @@ public class FacturaController {
                     ruc,
                     razonSocial,
                     factura.getComentarios() != null ? factura.getComentarios().trim() : null,
-                    montoGravado,
+                    montoAGuardar,
                     retencion,
                     factura.getMoneda() != null ? factura.getMoneda() : "GS",
                     // TC de la factura original, redondeado a entero.

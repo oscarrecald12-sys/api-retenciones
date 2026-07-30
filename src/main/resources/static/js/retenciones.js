@@ -1739,12 +1739,13 @@ function descargarTxt() {
       // si hay retención calculada, hubo IVA (la retención es SOLO sobre el impuesto).
       // Para distinguir 10% vs 5% se usa el ratio retencion/base ≈ 2.72% para 10%
       // (10/11 * 30%) vs ≈ 1.30% para 5% (5/21 * 30%).
-      var tasaDetalle = "0"; // exento por defecto
+      // El monto de ordenes_detalle es siempre gravado al 10% con IVA incluido
+      // (confirmado con la persona de las órdenes de pago). Tasa fija "10".
+      var tasaDetalle = "0"; // exento por defecto (si no hay retención/monto)
       var montoRet = Number(r.montoRetencion) || 0;
       var baseImp = Number(r.baseImponible) || 0;
       if (montoRet > 0 && baseImp > 0) {
-        var ratio = montoRet / baseImp;
-        tasaDetalle = ratio > 0.02 ? "10" : "5"; // 10% da ~2.72%, 5% da ~1.30%
+        tasaDetalle = "10";
       }
 
       // Situación del informado (por ahora fijo; cuando manejen autofacturas
@@ -1779,19 +1780,12 @@ function descargarTxt() {
 
       var cuotas = condicion === "CREDITO" ? (Number(r.cuotas) || 1) : 0;
 
-      // FIX Bug precioUnitario: la especificación exige que para importes
-      // gravados el precio sea IVA INCLUIDO (Tesaka calcula base = precio/11).
-      // baseImponible viene SIN IVA de MariaDB, así que derivamos el impuesto
-      // desde el monto de retención: impuesto = retencion / (ivaPct/100).
+      // El precioUnitario es directamente el monto de ordenes_detalle, que YA
+      // viene con IVA 10% incluido (se guardó en retenciones_enviadas.monto ->
+      // baseImponible). Tesaka calcula la base del IVA como precio/11. No se
+      // recalcula ni se deriva nada: el monto del ERP es la fuente de verdad.
       var precioIvaIncluido = Number(r.baseImponible) || 0;
       var esUSDtxt = (r.moneda === "USD" || r.moneda === "DL");
-      if (tasaDetalle === "10" || tasaDetalle === "5") {
-        var pctAplicado = tasaDetalle === "10"
-          ? RETENCION_CONFIG.ivaPorcentaje10 : RETENCION_CONFIG.ivaPorcentaje5;
-        var impuestoDerivado = pctAplicado > 0
-          ? (Number(r.montoRetencion) || 0) / (pctAplicado / 100) : 0;
-        precioIvaIncluido = precioIvaIncluido + impuestoDerivado;
-      }
       // Redondeo: USD a 2 decimales, PYG a entero (sin decimales)
       precioIvaIncluido = esUSDtxt
         ? Math.round(precioIvaIncluido * 100) / 100
@@ -2427,7 +2421,6 @@ function procesarRespuestasTesaka(lista) {
   if (items.length === 0) {
     var vacio = "No se encontraron comprobantes procesables en el archivo.";
     if (duplicados > 0) vacio += " (" + duplicados + " duplicado(s))";
-    if (borradores > 0) vacio += " (" + borradores + " en borrador)";
     mostrarMensaje(vacio, "error");
     return;
   }
