@@ -39,10 +39,21 @@ public class DashboardController {
         Map<String, Object> respuesta = new HashMap<>();
 
         Map<String, Object> resumen = new HashMap<>();
-        resumen.put("pendientes", contarPorEstado("PENDIENTE"));
-        resumen.put("enviadas",   contarPorEstado("ENVIADO"));
-        resumen.put("aprobados",  contarPorEstado("APROBADO"));
-        resumen.put("rechazados", contarPorEstado("RECHAZADO"));
+        // Cada tarjeta cuenta con el MISMO criterio que su pestaña, para que el
+        // número mostrado sea igual a la cantidad de filas que se ven en ella.
+        // PENDIENTES: estado PENDIENTE o REVERTIDA (vuelven al pool).
+        resumen.put("pendientes", contarSql(
+            "estado IN ('PENDIENTE','REVERTIDA')"));
+        // ENVIADOS: enviadas/generadas SIN respuesta de Tesaka todavía.
+        resumen.put("enviadas", contarSql(
+            "estado IN ('ENVIADO','TESAKA_GENERADO') " +
+            "AND (aprobacion_estado IS NULL OR aprobacion_estado NOT IN ('RECHAZADO','APROBADO'))"));
+        // APROBADOS: aprobadas por Tesaka, salvo que ya se hayan revertido.
+        resumen.put("aprobados", contarSql(
+            "estado <> 'REVERTIDA' AND (estado = 'APROBADO' OR aprobacion_estado = 'APROBADO')"));
+        // RECHAZADOS: rechazadas por Tesaka, salvo que ya se hayan revertido.
+        resumen.put("rechazados", contarSql(
+            "estado <> 'REVERTIDA' AND (estado = 'RECHAZADO' OR aprobacion_estado = 'RECHAZADO')"));
         respuesta.put("resumen", resumen);
         respuesta.put("retenciones", obtenerRetenciones());
         respuesta.put("logs", obtenerLogs());
@@ -89,6 +100,17 @@ public class DashboardController {
         try {
             Long n = mariaDb.queryForObject(
                 "SELECT COUNT(*) FROM retenciones_enviadas WHERE estado = ?", Long.class, estado
+            );
+            return n != null ? n : 0L;
+        } catch (Exception e) { return 0L; }
+    }
+
+    // Conteo con una condición WHERE libre. Se usa para que cada tarjeta cuente
+    // con el mismo criterio que el filtro de su pestaña en el frontend.
+    private long contarSql(String where) {
+        try {
+            Long n = mariaDb.queryForObject(
+                "SELECT COUNT(*) FROM retenciones_enviadas WHERE " + where, Long.class
             );
             return n != null ? n : 0L;
         } catch (Exception e) { return 0L; }

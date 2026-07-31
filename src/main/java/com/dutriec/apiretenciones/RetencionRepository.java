@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 
 /**
  * Repositorio MariaDB para documentos de retención.
- * BD: retenciones_sifen — puerto 3306
+ * BD: dutriec — puerto 3306
  */
 @Repository
 public class RetencionRepository {
@@ -74,12 +74,32 @@ public class RetencionRepository {
         // Construir los placeholders dinámicos: ?,?,?...
         String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
 
-        String sql = """
-            UPDATE retenciones_enviadas 
-            SET estado = ?, 
-                fecha_actualizacion = NOW() 
-            WHERE id IN (%s)
-            """.formatted(placeholders);
+        // Al REENVIAR (ENVIADO/TESAKA_GENERADO) se limpia la respuesta previa de
+        // Tesaka. Así una factura que venía rechazada sale de la pestaña/contador
+        // Rechazados y queda solo en Enviados esperando nueva respuesta.
+        // Para APROBADO/RECHAZADO NO se limpia: ahí se registra esa respuesta.
+        boolean esReenvio = "ENVIADO".equalsIgnoreCase(estado)
+                || "TESAKA_GENERADO".equalsIgnoreCase(estado);
+
+        String sql;
+        if (esReenvio) {
+            sql = """
+                UPDATE retenciones_enviadas 
+                SET estado = ?, 
+                    aprobacion_estado = NULL,
+                    aprobacion_comentario = NULL,
+                    motivo_rechazo = NULL,
+                    fecha_actualizacion = NOW() 
+                WHERE id IN (%s)
+                """.formatted(placeholders);
+        } else {
+            sql = """
+                UPDATE retenciones_enviadas 
+                SET estado = ?, 
+                    fecha_actualizacion = NOW() 
+                WHERE id IN (%s)
+                """.formatted(placeholders);
+        }
 
         // Preparar parámetros: primero el estado, luego los IDs
         Object[] params = new Object[ids.size() + 1];
