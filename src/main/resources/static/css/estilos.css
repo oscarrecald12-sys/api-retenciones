@@ -1,4 +1,43 @@
 /* =====================
+   SISTEMA DE DISEÑO
+   Paleta unificada, tipografía y tokens reutilizables.
+   Cambiar un color acá lo cambia en toda la app.
+===================== */
+:root {
+    /* Marca / azul principal (unifica los 4 azules que había antes) */
+    --brand:        #1a5fa8;
+    --brand-dark:   #124a86;
+    --brand-light:  #e8f1fb;
+
+    /* Colores semánticos de estado */
+    --success:      #2d7a0e;
+    --success-bg:   #e8f5e0;
+    --warning:      #b8860b;
+    --warning-bg:   #fff8e1;
+    --danger:       #c0392b;
+    --danger-bg:    #fdecea;
+    --info:         #1a5fa8;
+    --info-bg:      #e8f1fb;
+    --neutral:      #6b7280;
+    --neutral-bg:   #f1f3f5;
+
+    /* Escala de grises (texto y bordes) */
+    --text:         #1f2937;
+    --text-soft:    #4b5563;
+    --text-muted:   #9095a0;
+    --border:       #e2e6ea;
+    --border-soft:  #eef1f4;
+    --bg:           #f4f6f8;
+    --surface:      #ffffff;
+
+    /* Sombras, radios y espaciado */
+    --shadow-sm:    0 1px 2px rgba(16,24,40,0.05);
+    --shadow-md:    0 4px 12px rgba(16,24,40,0.08);
+    --radius:       10px;
+    --radius-sm:    6px;
+}
+
+/* =====================
    RESET Y BASE
 ===================== */
 * {
@@ -8,36 +47,41 @@
 }
 
 body {
-    font-family: Arial, sans-serif;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 14px;
-    background-color: #f5f5f5;
-    color: #333;
+    background-color: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Números tabulares: montos alineados por columna */
+.tabla td.der, .tarjeta-valor, .mono {
+    font-variant-numeric: tabular-nums;
 }
 
 /* =====================
    ENCABEZADO
 ===================== */
 .header {
-    /* Corregido: Usamos 'background' y eliminamos la coma huérfana del final */
-    background: linear-gradient(rgba(7, 103, 212, 0.8), rgb(3, 30, 94));
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
     color: white;
-    padding: 16px 24px;
+    padding: 18px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    
-    /* Opcional: Un borde inferior sutil para delimitar el header del contenido */
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1); 
+    box-shadow: var(--shadow-sm);
 }
 
 .titulo {
     font-size: 18px;
-    font-weight: bold;
+    font-weight: 700;
+    letter-spacing: -0.01em;
 }
 
 .subtitulo {
-    font-size: 14px;
-    color: #d5dfec;
+    font-size: 13px;
+    color: rgba(255,255,255,0.75);
     margin-top: 2px;
 }
 
@@ -45,7 +89,7 @@ body {
    CONTENEDOR PRINCIPAL
 ===================== */
 .contenedor {
-    max-width: 1200px;
+    max-width: 1320px;
     margin: 20px auto;
     padding: 0 16px;
 }
@@ -61,31 +105,58 @@ body {
 }
 
 .tarjeta {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow .15s ease, transform .15s ease;
 }
+.tarjeta:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+/* Franja de color a la izquierda según el tipo de tarjeta */
+.tarjeta::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--neutral);
+}
+.tarjeta.t-pendiente::before { background: var(--warning); }
+.tarjeta.t-enviado::before   { background: var(--info); }
+.tarjeta.t-aprobado::before  { background: var(--success); }
+.tarjeta.t-rechazado::before { background: var(--danger); }
+.tarjeta.t-borrador::before  { background: var(--neutral); }
 
 .tarjeta-label {
     font-size: 11px;
-    color: #888;
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 4px;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    margin-bottom: 6px;
 }
 
 .tarjeta-valor {
-    font-size: 24px;
-    font-weight: bold;
-    color: #044919;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text);
 }
+.tarjeta.t-pendiente .tarjeta-valor { color: var(--warning); }
+.tarjeta.t-enviado .tarjeta-valor   { color: var(--info); }
+.tarjeta.t-aprobado .tarjeta-valor  { color: var(--success); }
+.tarjeta.t-rechazado .tarjeta-valor { color: var(--danger); }
 
-/* Colores */
-.color-gris     { color: #888; }
-.color-amarillo { color: #b8860b; }
-.color-verde    { color: #2d7a0e; }
-.color-rojo     { color: #a32d2d; }
+/* Colores utilitarios (ahora desde variables) */
+.color-gris     { color: var(--text-muted); }
+.color-amarillo { color: var(--warning); }
+.color-verde    { color: var(--success); }
+.color-rojo     { color: var(--danger); }
 
 /* =====================
    PESTAÑAS ESTADO
@@ -110,9 +181,9 @@ body {
 .pestana:hover { color: #333; }
 
 .pestana.activa {
-    color: #1a4a8a;
-    border-bottom-color: #1a4a8a;
-    font-weight: bold;
+    color: var(--brand);
+    border-bottom-color: var(--brand);
+    font-weight: 600;
 }
 
 /* =====================
@@ -190,66 +261,91 @@ body {
 }
 
 .btn-reenviar {
-    padding: 4px 10px;
+    padding: 4px 8px;
     background: none;
     color: #0c447c;
     border: 1px solid #7ab0e0;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 10.5px;
     cursor: pointer;
+    white-space: nowrap;
 }
 
 .btn-primario {
     padding: 8px 18px;
-    background-color: #1a4a8a;
+    background-color: var(--brand);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
-    font-weight: bold;
+    font-weight: 600;
     cursor: pointer;
+    transition: background .15s ease;
 }
-.btn-primario:hover    { background-color: #153d73; }
-.btn-primario:disabled { background-color: #aaa; cursor: not-allowed; }
+.btn-primario:hover    { background-color: var(--brand-dark); }
+.btn-primario:disabled { background-color: var(--text-muted); cursor: not-allowed; }
 
 /* =====================
    TABLA
 ===================== */
 .tabla-contenedor {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     overflow-x: auto;
+    box-shadow: var(--shadow-sm);
 }
 
 .tabla {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .tabla th {
     text-align: left;
-    padding: 8px 10px;
-    font-size: 11px;
-    font-weight: bold;
-    color: #666;
-    background: #f9f9f9;
-    border-bottom: 1px solid #ddd;
+    padding: 10px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--border-soft);
+    border-bottom: 1px solid var(--border);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
+    line-height: 1.25;
 }
 
 .tabla td {
-    padding: 9px 10px;
-    border-bottom: 1px solid #eee;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border-soft);
     vertical-align: middle;
+    color: var(--text-soft);
 }
 
 .tabla tr:last-child td { border-bottom: none; }
-.tabla tr:hover td      { background: #f5f8ff; }
+.tabla tbody tr {
+    transition: background .12s ease;
+}
+.tabla tbody tr:hover td { background: var(--brand-light); }
 
-.der { text-align: right; }
+.der { text-align: right; white-space: nowrap; }
+
+/* Celda de texto largo (razón social): trunca con elipsis para no
+   ensanchar la tabla. El nombre completo queda en el title (hover). */
+.tabla td.celda-nombre {
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+    color: var(--text);
+}
+
+/* Las columnas de montos nunca cortan y se mantienen compactas */
+.tabla td.der, .tabla th.der {
+    padding-left: 6px;
+    padding-right: 12px;
+}
 
 .tabla input[type="checkbox"] {
     width: 15px;
@@ -265,20 +361,34 @@ body {
    BADGES DE ESTADO
 ===================== */
 .badge {
-    display: inline-block;
-    padding: 3px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
     border-radius: 20px;
     font-size: 11px;
-    font-weight: bold;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+/* Punto de color antes del texto */
+.badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.9;
 }
 
-.badge-sinauth   { background: #f0f0f0; color: #666; }
-.badge-pendiente { background: #fff8c0; color: #8a6800; border: 1px solid #e6c800; }
-.badge-procesado { background: #e8f5e0; color: #2d7a0e; }
-.badge-rechazado { background: #fce8e8; color: #a32d2d; }
-.badge-anulado   { background: #f0f0f0; color: #888; }
-.badge-revertida { background:#FAEEDA; color:#854F0B; }
-.badge-borrador { background:#FAEEDA; color:#854F0B; }
+.badge-sinauth   { background: var(--neutral-bg); color: var(--neutral); }
+.badge-pendiente { background: var(--warning-bg); color: var(--warning); }
+.badge-procesado { background: var(--success-bg); color: var(--success); }
+.badge-rechazado { background: var(--danger-bg);  color: var(--danger); }
+.badge-anulado   { background: var(--neutral-bg); color: var(--text-muted); }
+.badge-revertida { background: var(--warning-bg); color: var(--warning); }
+.badge-borrador  { background: var(--warning-bg); color: var(--warning); }
+.badge-enviado   { background: var(--info-bg);    color: var(--info); }
 /* =====================
    MENSAJE RESULTADO
 ===================== */
@@ -306,6 +416,7 @@ body {
    LOGIN
 ============================================= */
 /* Contenedor principal que ocupa toda la pantalla */
+
 #pantalla-login {
   display: flex;
   justify-content: center;
@@ -498,13 +609,14 @@ body {
 
 /* Botón Ver rechazo */
 .btn-rechazo {
-    padding: 4px 10px;
+    padding: 4px 8px;
     background: none;
     color: #a32d2d;
     border: 1px solid #f09595;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 10.5px;
     cursor: pointer;
+    white-space: nowrap;
 }
 .btn-rechazo:hover { background: #fce8e8; }
 

@@ -4,11 +4,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Retenciones SIFEN — DUTRIEC SA</title>
-  <link rel="stylesheet" href="css/estilos.css?v=4">
+  <title>Retenciones SIFEN - DUTRIEC S.A.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/estilos.css?v=5">
 </head>
 
 <body>
+
 
   <!-- ====================================================
        PANTALLA LOGIN
@@ -170,25 +174,25 @@
 
         <!-- TARJETAS DASHBOARD -->
         <div class="tarjetas" style="grid-template-columns:repeat(5, 1fr)">
-          <div class="tarjeta">
+          <div class="tarjeta t-pendiente">
             <p class="tarjeta-label">Pendientes</p>
-            <p class="tarjeta-valor color-amarillo" id="dash-pendientes">—</p>
+            <p class="tarjeta-valor" id="dash-pendientes">—</p>
           </div>
-          <div class="tarjeta">
+          <div class="tarjeta t-enviado">
             <p class="tarjeta-label">Enviados a Tesaka</p>
-            <p class="tarjeta-valor" id="dash-enviadas" style="color:#1a4a8a">—</p>
+            <p class="tarjeta-valor" id="dash-enviadas">—</p>
           </div>
-          <div class="tarjeta">
+          <div class="tarjeta t-aprobado">
             <p class="tarjeta-label">Aprobados</p>
-            <p class="tarjeta-valor color-verde" id="dash-aprobados">—</p>
+            <p class="tarjeta-valor" id="dash-aprobados">—</p>
           </div>
-          <div class="tarjeta">
+          <div class="tarjeta t-rechazado">
             <p class="tarjeta-label">Rechazados</p>
-            <p class="tarjeta-valor color-rojo" id="dash-rechazados">—</p>
+            <p class="tarjeta-valor" id="dash-rechazados">—</p>
           </div>
-          <div class="tarjeta">
+          <div class="tarjeta t-borrador">
             <p class="tarjeta-label">Borradores</p>
-            <p class="tarjeta-valor" id="dash-borradores" style="color:#854f0b">—</p>
+            <p class="tarjeta-valor" id="dash-borradores">—</p>
           </div>
         </div>
 
@@ -231,7 +235,6 @@
                 <th class="der">Monto Total</th>
                 <th class="der">IVA</th>
                 <th class="der">Retención</th>
-                <th>Tipo</th>
                 <th>Estado TESAKA</th>
                 <th>Fecha envío</th>
                <th>Acciones</th>
