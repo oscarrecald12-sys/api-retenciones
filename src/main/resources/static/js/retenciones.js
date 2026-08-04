@@ -3244,8 +3244,23 @@ function procesarRespuestasTesaka(lista) {
 
     var comentario =
       recepcion.mensajeProcesamiento || recepcion.mensajeRecepcion || null;
-    var nroControl = recepcion.numeroControl || null;
+  var nroControl = recepcion.numeroControl || null;
 
+  if (recOk === false || procOk === false || !nroControl) { 
+  // Se rechaza si falla la recepción, el procesamiento o si NO tiene número de control
+  // Si no hay numero de control y Tesaka no devolvió un mensaje específico, explicamos el motivo
+  estado = "RECHAZADO";
+  if (!nroControl && !comentario) {
+    comentario = "El comprobante no cuenta con Número de Control de Tesaka.";
+  } else if (!nroControl && comentario) {
+    comentario += " (Falta Número de Control)";
+  }
+    
+  } else if (estadoRaw === "borrador") {
+    estado = "BORRADOR";
+  } else {
+    estado = "APROBADO";
+  }
     items.push({
       nro_comprobante: String(nroVenta),
       nro_comprobante_normalizado: clave,
@@ -3327,6 +3342,16 @@ function procesarRespuestasTesaka(lista) {
       tipo = "error";
     else if (noEncontrados > 0 || errCount > 0 || borradoresProc > 0)
       tipo = "warning";
+
+    var msg = partes.join(", ");
+    var tipo = "ok";
+
+// Si hay rechazados o errores críticos, se fuerza el tipo 'error' o 'warning'
+    if (rechazadas > 0 || (aprobadas === 0 && borradoresProc === 0)) {
+      tipo = "error"; // Hace que mostrarMensaje use el color rojo
+    } else if (noEncontrados > 0 || errCount > 0 || borradoresProc > 0) {
+      tipo = "warning"; // Naranja / Amarillo
+    }
 
     // Diagnóstico: listar en consola los comprobantes que no se encontraron.
     if (listaNoEncontrados.length > 0) {
