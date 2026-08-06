@@ -776,7 +776,18 @@ function renderDashboard() {
       fueRechazado || esRevertida
         ? "background:#fff8f0;border-left:3px solid #f59e0b;"
         : "";
-    html += "<tr style='" + estiloFila + "'>";
+
+    // Detección de retención elevada (caso típico de compra a cuotas):
+    // una retención NORMAL es siempre ~2.73% del monto (30% del IVA, y el IVA
+    // es monto/11). Si la relación ret/monto supera el 4%, es señal de que la
+    // retención se calculó sobre el total de la factura y se aplica toda en la
+    // primera cuota (las cuotas siguientes salen sin retención).
+    var baseFila = Number(r.baseImponible) || 0;
+    var retFila = Number(r.montoRetencion) || 0;
+    var retElevada = baseFila > 0 && retFila > 0 && (retFila / baseFila) > 0.04;
+    var claseFila = retElevada ? " class='fila-ret-elevada'" : "";
+
+    html += "<tr" + claseFila + " style='" + estiloFila + "'>";
 
     if (mostrarCheckbox) {
       html +=
@@ -835,6 +846,9 @@ function renderDashboard() {
       "<td class='der'><strong>" +
       simbolo +
       formatMonto(ret) +
+      (retElevada
+        ? "<span class='icono-ret-elevada' title='Retención elevada respecto al monto de esta cuota. Es normal en compras a cuotas: la retención se calcula sobre el total de la factura y se aplica toda en la primera cuota. Las cuotas siguientes salen sin retención.'>⚠</span>"
+        : "") +
       "</strong></td>" +
       "<td>" +
       badgeDashboard(r.estadoSifen) +
@@ -849,7 +863,6 @@ function renderDashboard() {
   });
   tbody.innerHTML = html;
 }
-
 function badgeDashboard(estado) {
   var map = {
     ENVIADO: "badge-enviado",

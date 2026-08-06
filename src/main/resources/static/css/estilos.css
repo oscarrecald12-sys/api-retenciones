@@ -330,6 +330,21 @@ body {
 
 .der { text-align: right; white-space: nowrap; }
 
+/* Fila con retención elevada respecto al monto (caso típico de compra a
+   cuotas: la retención total se aplica en la primera cuota). Franja ámbar. */
+.tabla tr.fila-ret-elevada td {
+    background: #fffaf0;
+}
+.tabla tr.fila-ret-elevada td:first-child {
+    box-shadow: inset 3px 0 0 var(--warning);
+}
+.icono-ret-elevada {
+    color: var(--warning);
+    cursor: help;
+    font-size: 12px;
+    margin-left: 4px;
+}
+
 /* Celda de texto largo (razón social): trunca con elipsis para no
    ensanchar la tabla. El nombre completo queda en el title (hover). */
 .tabla td.celda-nombre {
@@ -416,7 +431,6 @@ body {
    LOGIN
 ============================================= */
 /* Contenedor principal que ocupa toda la pantalla */
-
 #pantalla-login {
   display: flex;
   justify-content: center;
